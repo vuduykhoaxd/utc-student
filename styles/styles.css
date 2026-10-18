@@ -1,0 +1,41 @@
+/* ==========================================================================
+   UTC STUDENT — STYLESHEET MANIFEST
+   Load order matters: tokens → base → components → layout → features.
+   ========================================================================== */
+
+/* ---------- 1. Design system ---------- */
+@import url('./base/fonts.css');
+@import url('./base/tokens.css');
+@import url('./base/reset.css');
+@import url('./base/typography.css');
+@import url('./base/textures.css');
+@import url('./base/animations.css');
+@import url('./base/utilities.css');
+
+/* ---------- 2. Components ---------- */
+@import url('./components/button.css');
+@import url('./components/card.css');
+@import url('./components/form.css');
+@import url('./components/badge.css');
+@import url('./components/overlay.css');
+@import url('./components/navigation.css');
+@import url('./components/command-palette.css');
+
+/* ---------- 3. Layout ---------- */
+@import url('./layout/app-shell.css');
+@import url('./layout/sidebar.css');
+@import url('./layout/topbar.css');
+
+/* ---------- 4. Features ---------- */
+@import url('./features/login.css');
+@import url('./features/dashboard.css');
+@import url('./features/news.css');
+@import url('./features/timetable.css');
+@import url('./features/grades.css');
+@import url('./features/profile.css');
+@import url('./features/friends.css');
+@import url('./features/chat.css');
+@import url('./features/posts.css');
+@import url('./features/documents.css');
+@import url('./features/notifications.css');
+@import url('./features/settings.css');

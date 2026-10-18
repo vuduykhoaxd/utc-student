@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="vi" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#0d1018">
+  <meta name="color-scheme" content="dark light">
+  <meta name="description"
+        content="UTC Student — cổng thông tin sinh viên dành cho Trường Đại học Giao thông vận tải và Truyền thông: thời khóa biểu, thông báo, tài liệu, bài đăng, kết bạn và tin nhắn.">
+  <meta name="robots" content="index, follow">
+  <meta name="author" content="UTC Student">
+
+  <!-- Open Graph / Twitter -->
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="UTC Student">
+  <meta property="og:title" content="UTC Student — Cổng thông tin sinh viên">
+  <meta property="og:description"
+        content="Thời khóa biểu, thông báo, tài liệu, bài đăng, kết bạn và tin nhắn — dành cho sinh viên ĐH Giao thông vận tải và Truyền thông.">
+  <meta property="og:image" content="assets/og-image.svg">
+  <meta property="og:locale" content="vi_VN">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="UTC Student — Cổng thông tin sinh viên">
+  <meta name="twitter:description" content="Cổng thông tin sinh viên UTC: thời khóa biểu, thông báo, tài liệu và cộng đồng.">
+  <meta name="twitter:image" content="assets/og-image.svg">
+
+  <title>UTC Student — Cổng thông tin sinh viên</title>
+
+  <!-- Inline SVG favicon: the brand mark, no extra request -->
+  <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+  <link rel="apple-touch-icon" href="assets/favicon.svg">
+  <link rel="manifest" href="manifest.webmanifest">
+
+  <!--
+    Paint the persisted theme before the stylesheet applies, so there is no flash.
+    Also honours ?theme= so a Pages preview link can force light or dark.
+  -->
+  <script>
+    (function () {
+      try {
+        var forced = new URLSearchParams(location.search).get('theme');
+        var saved = localStorage.getItem('utc-student:theme');
+        var theme = (forced === 'light' || forced === 'dark')
+          ? forced
+          : (saved === 'light' || saved === 'dark'
+              ? saved
+              : (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'));
+        document.documentElement.setAttribute('data-theme', theme);
+      } catch (error) {
+        document.documentElement.setAttribute('data-theme', 'dark');
+      }
+    })();
+  </script>
+
+  <!--
+    v= is the cache-buster. GitHub Pages serves static files through a CDN with a
+    long TTL, so a redeploy will not invalidate styles.css / main.js on its own.
+    Bump this number whenever you ship a change: it appends a unique query string
+    and forces a fresh fetch for every entry point.
+  -->
+  <link rel="stylesheet" href="styles/styles.css?v=20261018">
+
+  <!-- Warm the font that paints first, then the stylesheet -->
+  <link rel="preload" href="assets/fonts/BeVietnamPro-400-vietnamese.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="assets/fonts/BeVietnamPro-700-vietnamese.woff2" as="font" type="font/woff2" crossorigin>
+</head>
+
+<body>
+  <a class="skip-link" href="#root">Bỏ qua điều hướng</a>
+
+  <!-- Ambient background + routed content are mounted here by scripts/main.js -->
+  <div id="root" role="application" aria-label="UTC Student"></div>
+
+  <!-- First-paint placeholder, removed by the router on the first resolve -->
+  <div id="boot-screen" aria-hidden="true"
+       style="position:fixed;inset:0;display:grid;place-items:center;gap:1rem;z-index:900">
+    <div style="display:flex;flex-direction:column;align-items:center;gap:1.25rem">
+      <div class="spinner" style="width:2rem;height:2rem;color:#6366f1"></div>
+      <p style="font:600 .8125rem/1.4 'Be Vietnam Pro',system-ui,sans-serif;color:#94a3b8;letter-spacing:.04em">
+        Đang tải UTC Student…
+      </p>
+    </div>
+  </div>
+
+  <noscript>
+    <div style="position:fixed;inset:0;display:grid;place-items:center;padding:2rem;text-align:center;z-index:1000">
+      <div style="max-width:32rem">
+        <h1 style="font:800 1.5rem/1.2 system-ui,sans-serif;margin-bottom:.75rem">Cần bật JavaScript</h1>
+        <p style="font:400 .9375rem/1.7 system-ui,sans-serif;color:#64748b">
+          UTC Student là một ứng dụng web hiện tại, được xây dựng hoàn toàn bằng HTML, CSS và JavaScript
+          thuần. Vui lòng bật JavaScript trong trình duyệt để tiếp tục.
+        </p>
+      </div>
+    </div>
+  </noscript>
+
+  <!--
+    v= matches index.html. See the note on the stylesheet link above.
+    type=module is required — the app is split across ES modules.
+  -->
+  <script type="module" src="scripts/main.js?v=20261018"></script>
+
+  <script>
+    // Remove the boot placeholder once the first route has rendered.
+    window.addEventListener('load', function () {
+      var check = setInterval(function () {
+        if (document.body.classList.contains('is-ready')) {
+          var boot = document.getElementById('boot-screen');
+          if (boot) {
+            boot.style.opacity = '0';
+            boot.style.transition = 'opacity 320ms ease';
+            setTimeout(function () { boot.remove(); }, 340);
+          }
+          clearInterval(check);
+        }
+      }, 60);
+      setTimeout(function () { clearInterval(check); }, 8000);
+    });
+  </script>
+</body>
+</html>

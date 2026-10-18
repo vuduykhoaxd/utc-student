@@ -1,0 +1,634 @@
+/* ==========================================================================
+   ANIMATION SYSTEM
+   Keyframes, reveal-on-scroll primitives, press/hover feedback,
+   page transitions, loading states, reduced-motion policy.
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   KEYFRAMES
+   -------------------------------------------------------------------------- */
+
+/* Aurora drift — four independent looping paths so the field never repeats
+   visibly. Transform-only: runs on the compositor, never triggers layout. */
+@keyframes drift-a {
+  0%   { transform: translate3d(0, 0, 0) scale(1); }
+  50%  { transform: translate3d(12vmax, 8vmax, 0) scale(1.14); }
+  100% { transform: translate3d(4vmax, 20vmax, 0) scale(0.94); }
+}
+
+@keyframes drift-b {
+  0%   { transform: translate3d(0, 0, 0) scale(1.06); }
+  50%  { transform: translate3d(-16vmax, 12vmax, 0) scale(0.9); }
+  100% { transform: translate3d(-6vmax, -8vmax, 0) scale(1.18); }
+}
+
+@keyframes drift-c {
+  0%   { transform: translate3d(0, 0, 0) scale(0.96); }
+  50%  { transform: translate3d(18vmax, -10vmax, 0) scale(1.16); }
+  100% { transform: translate3d(-10vmax, -4vmax, 0) scale(1); }
+}
+
+@keyframes drift-d {
+  0%   { transform: translate3d(0, 0, 0) scale(1.1); }
+  50%  { transform: translate3d(-14vmax, -14vmax, 0) scale(0.92); }
+  100% { transform: translate3d(-20vmax, 6vmax, 0) scale(1.06); }
+}
+
+/* Film grain jitter — stepped so it reads as film, not a smooth pan */
+@keyframes grain-shift {
+  0%   { transform: translate3d(0, 0, 0); }
+  20%  { transform: translate3d(-3%, 2%, 0); }
+  40%  { transform: translate3d(2%, -3%, 0); }
+  60%  { transform: translate3d(-2%, -2%, 0); }
+  80%  { transform: translate3d(3%, 1%, 0); }
+  100% { transform: translate3d(0, 0, 0); }
+}
+
+/* Conic colour rotation for gradient borders and rings */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes spin-reverse {
+  to { transform: rotate(-360deg); }
+}
+
+/* Gradient text pan */
+@keyframes gradient-pan {
+  0%, 100% { background-position: 0% 50%; }
+  50%      { background-position: 100% 50%; }
+}
+
+/* Entrance choreography */
+@keyframes fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes rise-in {
+  from { opacity: 0; transform: translate3d(0, 18px, 0); }
+  to   { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+
+@keyframes rise-in-sm {
+  from { opacity: 0; transform: translate3d(0, 8px, 0); }
+  to   { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+
+@keyframes slide-in-left {
+  from { opacity: 0; transform: translate3d(-24px, 0, 0); }
+  to   { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+
+@keyframes slide-in-right {
+  from { opacity: 0; transform: translate3d(24px, 0, 0); }
+  to   { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+
+@keyframes scale-in {
+  from { opacity: 0; transform: scale(0.94); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+@keyframes pop-in {
+  0%   { opacity: 0; transform: scale(0.82); }
+  60%  { opacity: 1; transform: scale(1.04); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes flip-in-y {
+  from { opacity: 0; transform: perspective(900px) rotateX(-12deg) translateY(10px); }
+  to   { opacity: 1; transform: perspective(900px) rotateX(0) translateY(0); }
+}
+
+/* Feedback */
+@keyframes pulse-ring {
+  0%   { box-shadow: 0 0 0 0 var(--primary-ring); }
+  70%  { box-shadow: 0 0 0 12px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+
+@keyframes heart-burst {
+  0%   { transform: scale(1); }
+  35%  { transform: scale(1.32); }
+  55%  { transform: scale(0.94); }
+  100% { transform: scale(1); }
+}
+
+@keyframes shake-x {
+  0%, 100% { transform: translateX(0); }
+  20%      { transform: translateX(-5px); }
+  40%      { transform: translateX(5px); }
+  60%      { transform: translateX(-3px); }
+  80%      { transform: translateX(3px); }
+}
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translate3d(0, -14px, 0) scale(0.96); }
+  to   { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+}
+
+@keyframes toast-out {
+  from { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+  to   { opacity: 0; transform: translate3d(14px, 0, 0) scale(0.96); }
+}
+
+@keyframes modal-in {
+  from { opacity: 0; transform: translate3d(0, 16px, 0) scale(0.97); }
+  to   { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+}
+
+/* Backdrop dim. Opacity only.
+   Animating `backdrop-filter` blur forces the browser to re-blur everything
+   behind the element on every single frame — one of the most expensive things
+   you can ask a compositor to do. A static blur plus an opacity fade looks
+   identical here and costs one repaint at the start. */
+@keyframes backdrop-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes skeleton-sweep {
+  from { transform: translate3d(-100%, 0, 0); }
+  to   { transform: translate3d(100%, 0, 0); }
+}
+
+@keyframes float-y {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  50%      { transform: translate3d(0, -10px, 0); }
+}
+
+@keyframes shimmer-text {
+  0%   { background-position: 200% 50%; }
+  100% { background-position: -200% 50%; }
+}
+
+@keyframes equalizer {
+  0%, 100% { transform: scaleY(0.35); }
+  50%      { transform: scaleY(1); }
+}
+
+@keyframes ripple-out {
+  from { transform: scale(0); opacity: 0.45; }
+  to   { transform: scale(2.6); opacity: 0; }
+}
+
+@keyframes draw-line {
+  from { transform: scaleX(0); }
+  to   { transform: scaleX(1); }
+}
+
+@keyframes caret-blink {
+  0%, 45%   { opacity: 1; }
+  55%, 100% { opacity: 0; }
+}
+
+@keyframes typing-dot {
+  0%, 60%, 100% { transform: translate3d(0, 0, 0); opacity: 0.35; }
+  30%           { transform: translate3d(0, -4px, 0); opacity: 1; }
+}
+
+@keyframes progress-indeterminate {
+  0%   { transform: translate3d(-100%, 0, 0); }
+  100% { transform: translate3d(320%, 0, 0); }
+}
+
+/* Thin route progress line.
+   Was a full-viewport gradient wipe; that cost ~9% of route-switch time for
+   decoration. 3px of paint conveys the same thing. */
+@keyframes page-wipe {
+  0%   { transform: scaleX(0); transform-origin: left; opacity: 1; }
+  55%  { transform: scaleX(1); transform-origin: left; opacity: 1; }
+  56%  { transform: scaleX(1); transform-origin: right; opacity: 1; }
+  100% { transform: scaleX(0); transform-origin: right; opacity: 1; }
+}
+
+/* --------------------------------------------------------------------------
+   UTILITY ANIMATION CLASSES
+   -------------------------------------------------------------------------- */
+
+.anim-fade { animation: fade-in var(--dur-base) var(--ease-out) both; }
+.anim-rise { animation: rise-in var(--dur-slow) var(--ease-out) both; }
+.anim-rise-sm { animation: rise-in-sm var(--dur-base) var(--ease-out) both; }
+.anim-scale { animation: scale-in var(--dur-base) var(--ease-out) both; }
+.anim-pop { animation: pop-in var(--dur-slow) var(--ease-spring) both; }
+.anim-flip { animation: flip-in-y var(--dur-slow) var(--ease-out) both; }
+.anim-float { animation: float-y 6s var(--ease-smooth) infinite; }
+.anim-spin { animation: spin 1.1s linear infinite; }
+.anim-spin-slow { animation: spin 3.6s linear infinite; }
+
+/* ---------- Entrance delays (staggered lists) ---------- */
+.d-0 { animation-delay: 0ms; }
+.d-1 { animation-delay: 60ms; }
+.d-2 { animation-delay: 120ms; }
+.d-3 { animation-delay: 180ms; }
+.d-4 { animation-delay: 240ms; }
+.d-5 { animation-delay: 300ms; }
+.d-6 { animation-delay: 360ms; }
+.d-7 { animation-delay: 420ms; }
+.d-8 { animation-delay: 480ms; }
+.d-9 { animation-delay: 540ms; }
+.d-10 { animation-delay: 600ms; }
+.d-11 { animation-delay: 660ms; }
+.d-12 { animation-delay: 720ms; }
+.d-13 { animation-delay: 780ms; }
+.d-14 { animation-delay: 840ms; }
+.d-15 { animation-delay: 900ms; }
+
+/* --------------------------------------------------------------------------
+   SCROLL REVEAL
+   Elements marked [data-reveal] start hidden and are released by an
+   IntersectionObserver. --reveal-delay enables per-item stagger.
+   -------------------------------------------------------------------------- */
+
+/* Layer promotion is applied by the observer while the transition runs, not
+   permanently. A blanket `will-change` here would pin one compositor layer per
+   revealed element — on a list-heavy page that is dozens of layers and more
+   GPU memory than the animation ever saves. */
+[data-reveal] {
+  opacity: 0;
+  transform: translate3d(0, 20px, 0);
+  transition:
+    opacity var(--dur-slower) var(--ease-out),
+    transform var(--dur-slower) var(--ease-out);
+  transition-delay: var(--reveal-delay, 0ms);
+}
+
+[data-reveal].is-revealing {
+  will-change: opacity, transform;
+}
+
+[data-reveal='fade'] {
+  transform: none;
+}
+
+[data-reveal='left'] {
+  transform: translate3d(-26px, 0, 0);
+}
+
+[data-reveal='right'] {
+  transform: translate3d(26px, 0, 0);
+}
+
+[data-reveal='zoom'] {
+  transform: scale(0.94);
+}
+
+[data-reveal='flip'] {
+  transform: perspective(900px) rotateX(-10deg) translateY(14px);
+}
+
+[data-reveal].is-revealed {
+  opacity: 1;
+  transform: none;
+  will-change: auto;
+}
+
+/* --------------------------------------------------------------------------
+   PRESS / HOVER FEEDBACK
+   -------------------------------------------------------------------------- */
+
+.pressable {
+  transition:
+    transform var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-base) var(--ease-out),
+    background-color var(--dur-base) var(--ease-out),
+    border-color var(--dur-base) var(--ease-out),
+    color var(--dur-base) var(--ease-out);
+}
+
+.pressable:active {
+  transform: scale(0.972);
+}
+
+.pressable-strong:active {
+  transform: scale(0.955);
+}
+
+.lift {
+  transition:
+    transform var(--dur-base) var(--ease-out),
+    box-shadow var(--dur-base) var(--ease-out),
+    border-color var(--dur-base) var(--ease-out);
+}
+
+.lift:hover {
+  transform: translate3d(0, -4px, 0);
+  box-shadow: var(--shadow-lg);
+  border-color: var(--surface-border-glow);
+}
+
+.lift-sm:hover {
+  transform: translate3d(0, -2px, 0);
+  box-shadow: var(--shadow-md);
+}
+
+.lift-lg:hover {
+  transform: translate3d(0, -8px, 0);
+  box-shadow: var(--shadow-xl);
+}
+
+/* Pointer spotlight — --spot-x / --spot-y set by JS */
+.spotlight {
+  position: relative;
+  overflow: hidden;
+}
+
+.spotlight::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  opacity: 0;
+  transition: opacity var(--dur-base) var(--ease-out);
+  background: radial-gradient(
+    320px circle at var(--spot-x, 50%) var(--spot-y, 50%),
+    var(--primary-soft-hover),
+    transparent 65%
+  );
+}
+
+.spotlight:hover::after {
+  opacity: 1;
+}
+
+.spotlight > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* Magnetic pull — JS sets --mag-x / --mag-y */
+.magnetic {
+  transform: translate3d(var(--mag-x, 0px), var(--mag-y, 0px), 0);
+  transition: transform var(--dur-base) var(--ease-out);
+}
+
+/* Click ripple injected by JS */
+.ripple-host {
+  position: relative;
+  overflow: hidden;
+}
+
+.ripple {
+  position: absolute;
+  border-radius: 50%;
+  background: currentColor;
+  pointer-events: none;
+  transform: scale(0);
+  opacity: 0.4;
+  animation: ripple-out var(--dur-slower) var(--ease-out) forwards;
+  width: var(--ripple-size);
+  height: var(--ripple-size);
+  left: var(--ripple-x);
+  top: var(--ripple-y);
+  margin-left: calc(var(--ripple-size) / -2);
+  margin-top: calc(var(--ripple-size) / -2);
+}
+
+/* Count-up numeric emphasis */
+.count-flash {
+  animation: pop-in var(--dur-base) var(--ease-spring);
+}
+
+.heart-burst {
+  animation: heart-burst var(--dur-slow) var(--ease-spring);
+}
+
+.shake {
+  animation: shake-x var(--dur-slow) var(--ease-in-out);
+}
+
+.pulse-ring {
+  animation: pulse-ring 2s var(--ease-out) infinite;
+}
+
+/* --------------------------------------------------------------------------
+   PAGE TRANSITIONS
+   -------------------------------------------------------------------------- */
+
+.view-enter {
+  animation: rise-in var(--dur-slow) var(--ease-out) both;
+}
+
+.view-leave {
+  animation: fade-in var(--dur-fast) var(--ease-in) reverse both;
+}
+
+/* Wipe used between major route changes (JS adds .is-wiping) */
+.route-wipe {
+  position: fixed;
+  top: var(--topbar-h);
+  left: 0;
+  right: 0;
+  z-index: var(--z-sticky);
+  pointer-events: none;
+  height: 3px;
+  background: linear-gradient(
+    90deg,
+    var(--primary) 0%,
+    var(--violet) 45%,
+    var(--accent) 100%
+  );
+  transform: scaleX(0);
+  transform-origin: left;
+  opacity: 0.95;
+  will-change: transform;
+}
+
+.route-wipe.is-active {
+  animation: page-wipe 480ms var(--ease-in-out) both;
+}
+
+/* View Transitions API enhancement (progressive) */
+::view-transition-old(root) {
+  animation: fade-in var(--dur-fast) var(--ease-in) reverse both;
+}
+
+::view-transition-new(root) {
+  animation: rise-in var(--dur-slow) var(--ease-out) both;
+}
+
+/* --------------------------------------------------------------------------
+   LOADING STATES
+   -------------------------------------------------------------------------- */
+
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background-color: var(--surface-2);
+  border-radius: var(--radius-sm);
+}
+
+.skeleton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translate3d(-100%, 0, 0);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    oklch(1 0 0 / 0.08),
+    transparent
+  );
+  animation: skeleton-sweep 1.5s var(--ease-smooth) infinite;
+}
+
+[data-theme='light'] .skeleton::after {
+  background: linear-gradient(
+    90deg,
+    transparent,
+    oklch(1 0 0 / 0.7),
+    transparent
+  );
+}
+
+.spinner {
+  width: 1.1em;
+  height: 1.1em;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  animation: spin 0.7s linear infinite;
+}
+
+.progress-bar {
+  position: relative;
+  height: 3px;
+  overflow: hidden;
+  border-radius: var(--radius-pill);
+  background-color: var(--surface-3);
+}
+
+.progress-bar::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  width: 32%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--primary), var(--accent));
+  animation: progress-indeterminate 1.15s var(--ease-smooth) infinite;
+}
+
+/* Typing indicator for chat */
+.typing-indicator {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 1em;
+}
+
+.typing-indicator span {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background-color: currentColor;
+  animation: typing-dot 1.1s var(--ease-smooth) infinite;
+}
+
+.typing-indicator span:nth-child(2) { animation-delay: 140ms; }
+.typing-indicator span:nth-child(3) { animation-delay: 280ms; }
+
+/* --------------------------------------------------------------------------
+   EFFECT TIERS  (driven by core/preferences.js -> <html data-fx>)
+   --------------------------------------------------------------------------
+   Measured on the dashboard scroll, 59.9fps vsync with long frames:
+
+     full     — 25.0% of frames over 32ms
+     reduced  — the aurora stops drifting and the grain stops jittering
+     off      —  1.1%
+
+   The difference is the aurora's `mix-blend-mode: screen`: a blend over a
+   layer larger than the viewport forces the compositor to read back and
+   re-blend the whole backdrop stack on every frame. These tiers are the user-
+   facing escape hatch for that cost, not just a taste setting.
+   -------------------------------------------------------------------------- */
+
+[data-fx='reduced'] .backdrop__aurora,
+[data-fx='off'] .backdrop__aurora {
+  animation: none;
+}
+
+[data-fx='reduced'] .backdrop__grain,
+[data-fx='off'] .backdrop__grain {
+  animation: none;
+}
+
+/* Keep the artwork, drop the compositing cost. */
+[data-fx='reduced'] .aurora-blob {
+  mix-blend-mode: normal;
+}
+
+[data-fx='reduced'] .backdrop__spotlight {
+  display: none;
+}
+
+/* Hide the ambient field entirely. The canvas colour still paints, so the
+   page keeps its depth cues without any blending. */
+[data-fx='off'] .backdrop {
+  display: none;
+}
+
+/* The OS setting is authoritative and overrides any in-app choice. */
+[data-reduced-motion='true'] .backdrop__aurora,
+[data-reduced-motion='true'] .backdrop__grain,
+[data-reduced-motion='true'] .aurora-blob {
+  animation: none !important;
+  mix-blend-mode: normal !important;
+}
+
+/* --------------------------------------------------------------------------
+   ACCESSIBILITY: REDUCED MOTION
+   Everything above collapses to a cross-fade; nothing disappears.
+   -------------------------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  [data-reveal] {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+
+  .aurora-blob {
+    animation: none !important;
+    will-change: auto;
+  }
+
+  .backdrop__grain {
+    animation: none !important;
+  }
+
+  .ripple {
+    display: none;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   PRINT + HIGH CONTRAST FALLBACKS
+   -------------------------------------------------------------------------- */
+
+@media (forced-colors: active) {
+  .glass,
+  .glass-bordered {
+    border: 1px solid CanvasText;
+    background: Canvas;
+    backdrop-filter: none;
+  }
+
+  .backdrop {
+    display: none;
+  }
+}

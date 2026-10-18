@@ -1,0 +1,176 @@
+/* ==========================================================================
+   NOTIFICATIONS
+   Notification rows, unread treatment, category glyphs.
+   ========================================================================== */
+
+.notif {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border-radius: var(--radius-lg);
+  background-color: var(--surface-1);
+  border: 1px solid var(--surface-border);
+  transition:
+    background-color var(--dur-base) var(--ease-out),
+    border-color var(--dur-base) var(--ease-out),
+    transform var(--dur-base) var(--ease-out);
+}
+
+.notif:hover {
+  background-color: var(--surface-2);
+  border-color: var(--surface-border-glow);
+  transform: translateX(3px);
+}
+
+/* Unread marker */
+.notif--unread {
+  background-color: var(--primary-soft);
+  border-color: var(--surface-border-glow);
+}
+
+.notif--unread::before {
+  content: '';
+  position: absolute;
+  left: var(--space-4);
+  top: var(--space-5);
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: var(--primary);
+  box-shadow: 0 0 8px var(--primary);
+  animation: pulse-ring 2.4s var(--ease-out) infinite;
+}
+
+.notif__icon {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: var(--radius-md);
+  background-color: var(--notif-tint, var(--primary-soft));
+  color: var(--notif-color, var(--primary));
+}
+
+.notif__icon svg {
+  width: 1.1rem;
+  height: 1.1rem;
+  stroke-width: 2.1;
+}
+
+.notif__body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.notif__title {
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.4;
+}
+
+.notif__msg {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  line-height: var(--leading-snug);
+}
+
+.notif__time {
+  font-size: 10px;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  margin-top: 2px;
+}
+
+.notif__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-shrink: 0;
+}
+
+/* Category palette */
+.notif--news   { --notif-tint: var(--primary-soft);  --notif-color: var(--primary); }
+.notif--grade  { --notif-tint: var(--success-soft); --notif-color: var(--success); }
+.notif--chat   { --notif-tint: var(--accent-soft);  --notif-color: var(--accent); }
+.notif--friend { --notif-tint: var(--violet-soft);  --notif-color: var(--violet); }
+.notif--doc    { --notif-tint: var(--signal-soft);  --notif-color: var(--signal); }
+.notif--alert  { --notif-tint: var(--danger-soft);  --notif-color: var(--danger); }
+
+/* ---------- Popover mini list (topbar bell) ---------- */
+.notif-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: var(--z-popover);
+  width: min(22rem, calc(100vw - var(--space-8)));
+  max-height: 26rem;
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius-lg);
+  background-color: var(--surface-2);
+  backdrop-filter: blur(var(--blur-lg)) saturate(160%);
+  -webkit-backdrop-filter: blur(var(--blur-lg)) saturate(160%);
+  border: 1px solid var(--surface-border-strong);
+  box-shadow: var(--shadow-xl);
+  overflow: hidden;
+  animation: pop-in var(--dur-base) var(--ease-spring) both;
+}
+
+.notif-popover__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--surface-border);
+  flex-shrink: 0;
+}
+
+.notif-popover__body {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.notif-popover .notif {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  border-color: transparent;
+  background: none;
+}
+
+.notif-popover .notif:hover {
+  background-color: var(--surface-3);
+  transform: none;
+}
+
+.notif-popover .notif--unread {
+  background-color: var(--primary-soft);
+}
+
+.notif-popover .notif--unread::before {
+  left: var(--space-2);
+  top: var(--space-4);
+  width: 5px;
+  height: 5px;
+}
+
+.notif-popover .notif__icon {
+  width: 1.9rem;
+  height: 1.9rem;
+}
+
+.notif-popover .notif__icon svg {
+  width: 0.95rem;
+  height: 0.95rem;
+}

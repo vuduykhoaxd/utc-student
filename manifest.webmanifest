@@ -1,0 +1,23 @@
+{
+  "name": "UTC Student — Cổng thông tin sinh viên",
+  "short_name": "UTC Student",
+  "description": "Thời khóa biểu, thông báo, tài liệu, bài đăng, kết bạn và tin nhắn dành cho sinh viên ĐH Giao thông vận tải và Truyền thông.",
+  "lang": "vi",
+  "dir": "ltr",
+  "start_url": "./",
+  "scope": "./",
+  "id": "utc-student",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0d1018",
+  "theme_color": "#0d1018",
+  "categories": ["education", "productivity"],
+  "icons": [
+    {
+      "src": "assets/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

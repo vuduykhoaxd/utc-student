@@ -1,0 +1,386 @@
+/* ==========================================================================
+   TOPBAR
+   Mobile nav trigger, breadcrumb, global search, quick actions, user menu.
+   ========================================================================== */
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-drawer);
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  height: var(--topbar-h);
+  padding-inline: var(--safe-gutter);
+  flex-shrink: 0;
+  background-color: var(--surface-1);
+  /* See .sidebar — sticky surfaces must not blur, because the content passing
+     under them changes every scroll frame. */
+  background-image: linear-gradient(
+    to bottom,
+    color-mix(in oklab, var(--surface-1) 94%, transparent),
+    color-mix(in oklab, var(--surface-1) 97%, transparent)
+  );
+  border-bottom: 1px solid var(--surface-border);
+}
+
+/* Thin gradient hairline along the bottom edge */
+.topbar::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--primary) 22%,
+    var(--accent) 55%,
+    transparent
+  );
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+/* ---------- Mobile nav trigger ---------- */
+.topbar__nav-toggle {
+  display: none;
+}
+
+@media (max-width: 1024px) {
+  .topbar__nav-toggle {
+    display: grid;
+  }
+}
+
+/* ---------- Breadcrumb / page context ---------- */
+.topbar__context {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.2;
+}
+
+.topbar__crumb {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--text-xs);
+  color: var(--text-faint);
+}
+
+.topbar__crumb svg {
+  width: 0.75rem;
+  height: 0.75rem;
+  opacity: 0.7;
+}
+
+.topbar__crumb-current {
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.topbar__title {
+  font-family: var(--font-display);
+  font-size: var(--text-md);
+  font-weight: 700;
+  letter-spacing: var(--tracking-tight);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---------- Global search ---------- */
+.topbar__search {
+  position: relative;
+  flex: 1;
+  max-width: 26rem;
+  margin-inline: auto;
+}
+
+.topbar__search .search {
+  background-color: var(--surface-2);
+  height: 2.5rem;
+}
+
+.topbar__search kbd {
+  position: absolute;
+  right: var(--space-3);
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+  transition: opacity var(--dur-base) var(--ease-out);
+}
+
+.topbar__search:focus-within kbd {
+  opacity: 0;
+}
+
+/* ---------- Global search results ---------- */
+.search-results {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  z-index: var(--z-popover);
+  max-height: 26rem;
+  overflow-y: auto;
+  padding: var(--space-2);
+  border-radius: var(--radius-lg);
+  background-color: var(--surface-2);
+  backdrop-filter: blur(var(--blur-lg)) saturate(160%);
+  -webkit-backdrop-filter: blur(var(--blur-lg)) saturate(160%);
+  border: 1px solid var(--surface-border-strong);
+  box-shadow: var(--shadow-xl);
+  animation: pop-in var(--dur-base) var(--ease-spring) both;
+}
+
+.search-results__group {
+  padding: var(--space-2) var(--space-3) var(--space-1);
+  font-size: var(--text-2xs);
+  font-weight: 700;
+  letter-spacing: var(--tracking-widest);
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.search-result {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  text-align: left;
+  transition: background-color var(--dur-fast) var(--ease-out);
+}
+
+.search-result:hover,
+.search-result.is-cursor {
+  background-color: var(--primary-soft);
+}
+
+.search-result__icon {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 1.85rem;
+  height: 1.85rem;
+  border-radius: var(--radius-sm);
+  background-color: var(--surface-3);
+  color: var(--text-muted);
+}
+
+.search-result:hover .search-result__icon {
+  background-color: var(--primary);
+  color: var(--text-on-accent);
+}
+
+.search-result__icon svg {
+  width: 0.95rem;
+  height: 0.95rem;
+}
+
+.search-result__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.3;
+}
+
+.search-result__title {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.search-result__sub {
+  font-size: var(--text-2xs);
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+mark {
+  padding: 0;
+  background-color: var(--signal-soft);
+  color: inherit;
+  border-radius: 2px;
+  font-weight: 700;
+}
+
+/* ---------- Actions ---------- */
+.topbar__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-shrink: 0;
+}
+
+/* Notification bell: ring pulse when there are unread items */
+.topbar__bell {
+  position: relative;
+}
+
+.topbar__bell.has-unread::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  border: 1.5px solid var(--danger);
+  animation: pulse-ring 2.2s var(--ease-out) infinite;
+  pointer-events: none;
+}
+
+/* ---------- Theme toggle ---------- */
+.theme-toggle {
+  position: relative;
+  overflow: hidden;
+}
+
+.theme-toggle svg {
+  transition:
+    transform var(--dur-slow) var(--ease-spring),
+    opacity var(--dur-base) var(--ease-out);
+}
+
+.theme-toggle:hover svg {
+  transform: rotate(28deg) scale(1.1);
+}
+
+/* ---------- User menu trigger ---------- */
+.topbar__user {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2) var(--space-1) var(--space-1);
+  border-radius: var(--radius-pill);
+  border: 1px solid transparent;
+  transition:
+    background-color var(--dur-base) var(--ease-out),
+    border-color var(--dur-base) var(--ease-out);
+}
+
+.topbar__user:hover,
+.topbar__user[aria-expanded='true'] {
+  background-color: var(--surface-2);
+  border-color: var(--surface-border);
+}
+
+.topbar__user-name {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  max-width: 8rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---------- User menu panel ---------- */
+.user-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 17rem;
+}
+
+.user-menu__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  background-color: var(--surface-1);
+  margin-bottom: var(--space-2);
+}
+
+.user-menu__id {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--text-muted);
+  letter-spacing: 0.03em;
+}
+
+/* ---------- Connection / status strip ---------- */
+.status-strip {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.status-strip::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, var(--primary), var(--accent), transparent);
+  animation: route-progress 1.1s var(--ease-out) infinite;
+}
+
+@keyframes route-progress {
+  to { transform: translateX(100%); }
+}
+
+/* ---------- Live clock ---------- */
+.topbar__clock {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  line-height: 1.15;
+  padding-inline: var(--space-2);
+}
+
+.topbar__clock-time {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.topbar__clock-date {
+  font-size: var(--text-2xs);
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+
+@media (max-width: 900px) {
+  .topbar__clock {
+    display: none;
+  }
+}
+
+@media (max-width: 860px) {
+  .topbar__search {
+    display: none;
+  }
+
+  .topbar__user-name {
+    display: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .topbar {
+    padding-inline: var(--space-4);
+    gap: var(--space-2);
+  }
+
+  .topbar__title {
+    font-size: var(--text-base);
+  }
+
+  .topbar__crumb {
+    display: none;
+  }
+}

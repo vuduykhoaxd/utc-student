@@ -1,0 +1,48 @@
+# Deploy the static site to GitHub Pages.
+#
+# The project has no build step — HTML, CSS and ES modules ship as-is — so this
+# workflow only needs to upload the repository contents and enable Pages.
+#
+# Required repository setting (one-time):
+#   Settings > Pages > Build and deployment > Source = "GitHub Actions"
+
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  # Lets you publish from any other branch by running this workflow manually.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Never run two deploys at once, and let the newest commit win.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure Pages
+        id: pages
+        uses: actions/configure-pages@v5
+
+      # Upload the repository root as the site source. Single artifact, no build.
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

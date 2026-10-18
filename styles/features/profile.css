@@ -1,0 +1,547 @@
+/* ==========================================================================
+   PROFILE
+   Identity hero, read-only info grid, editable bio panel, achievement shelf.
+   ========================================================================== */
+
+.profile {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+/* ---------- Identity hero ---------- */
+.profile-hero {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  padding: var(--space-8);
+  border-radius: var(--radius-2xl);
+  background-color: var(--surface-1);
+  backdrop-filter: blur(var(--blur-xl)) saturate(150%);
+  -webkit-backdrop-filter: blur(var(--blur-xl)) saturate(150%);
+  border: 1px solid var(--surface-border);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+  isolation: isolate;
+}
+
+/* Generated banner artwork from the avatar palette */
+.profile-hero__banner {
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  background:
+    radial-gradient(circle at 15% 20%, var(--avatar-from, var(--brand-500)) 0%, transparent 45%),
+    radial-gradient(circle at 85% 15%, var(--violet-500) 0%, transparent 42%),
+    radial-gradient(circle at 60% 95%, var(--avatar-to, var(--accent-500)) 0%, transparent 48%),
+    var(--canvas-deep);
+  filter: saturate(140%);
+  opacity: 0.9;
+}
+
+.profile-hero__banner::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  color: #fff;
+  opacity: 0.13;
+  background-image:
+    linear-gradient(to right, currentColor 1px, transparent 1px),
+    linear-gradient(to bottom, currentColor 1px, transparent 1px);
+  background-size: 38px 38px;
+  mask-image: linear-gradient(to bottom, #000 0%, transparent 78%);
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, transparent 78%);
+}
+
+/* Diagonal hazard stripe accent at the top edge */
+.profile-hero__banner::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background-image: repeating-linear-gradient(
+    -45deg,
+    var(--primary) 0 10px,
+    var(--violet-500) 10px 20px,
+    var(--accent) 20px 30px
+  );
+  opacity: 0.85;
+}
+
+.profile-hero__scrim {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(
+    to bottom,
+    oklch(0 0 0 / 0.35) 0%,
+    transparent 30%,
+    var(--canvas) 96%
+  );
+  opacity: 0.85;
+}
+
+.profile-hero__top {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-5);
+  flex-wrap: wrap;
+}
+
+.profile-hero__id {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-5);
+  min-width: 0;
+}
+
+.profile-hero__avatar {
+  position: relative;
+  flex-shrink: 0;
+  border-radius: 50%;
+  padding: 4px;
+  background-image: linear-gradient(140deg, oklch(1 0 0 / 0.5), oklch(1 0 0 / 0.08));
+  box-shadow: var(--shadow-xl);
+  animation: float-y 7s var(--ease-smooth) infinite;
+}
+
+.profile-hero__avatar .avatar {
+  --avatar-size: 6.5rem;
+  box-shadow: inset 0 2px 0 oklch(1 0 0 / 0.3), var(--shadow-lg);
+}
+
+.profile-hero__name {
+  font-family: var(--font-display);
+  font-size: var(--text-2xl);
+  font-weight: 800;
+  letter-spacing: -0.035em;
+  line-height: 1.1;
+  color: #fff;
+  text-shadow: 0 2px 12px oklch(0 0 0 / 0.4);
+}
+
+.profile-hero__role {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: oklch(1 0 0 / 0.85);
+  margin-top: 2px;
+}
+
+.profile-hero__badges {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  margin-top: var(--space-2);
+}
+
+.profile-hero__student-id {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 4px var(--space-3);
+  border-radius: var(--radius-pill);
+  background-color: oklch(0 0 0 / 0.32);
+  border: 1px solid oklch(1 0 0 / 0.2);
+  backdrop-filter: blur(var(--blur-sm));
+  -webkit-backdrop-filter: blur(var(--blur-sm));
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: #fff;
+  cursor: pointer;
+  transition:
+    background-color var(--dur-base) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out);
+}
+
+.profile-hero__student-id:hover {
+  background-color: oklch(0 0 0 / 0.5);
+  transform: translateY(-1px);
+}
+
+.profile-hero__student-id svg {
+  width: 0.85rem;
+  height: 0.85rem;
+}
+
+.profile-hero__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+/* ---------- Bio panel ---------- */
+.bio-panel {
+  position: relative;
+  padding: var(--space-5);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--surface-border);
+  background-color: var(--surface-1);
+  backdrop-filter: blur(var(--blur-md));
+  -webkit-backdrop-filter: blur(var(--blur-md));
+  overflow: hidden;
+}
+
+.bio-panel__label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--text-faint);
+  margin-bottom: var(--space-3);
+}
+
+.bio-panel__label svg {
+  width: 0.9rem;
+  height: 0.9rem;
+  color: var(--primary);
+}
+
+.bio-text {
+  font-size: var(--text-base);
+  line-height: var(--leading-relaxed);
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  min-height: 3.5rem;
+}
+
+.bio-text--empty {
+  color: var(--text-faint);
+  font-style: italic;
+}
+
+.bio-text mark {
+  background-color: var(--signal-soft);
+  color: var(--text-primary);
+}
+
+/* Edit mode */
+.bio-edit {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  animation: rise-in-sm var(--dur-base) var(--ease-out) both;
+}
+
+.bio-edit__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.bio-edit__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* The one field students may edit is visually highlighted as "yours" */
+.bio-edit .textarea {
+  min-height: 9rem;
+  border-color: var(--primary);
+  background-color: var(--surface-solid);
+}
+
+/* ---------- Read-only info grid ---------- */
+.info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(15rem, 100%), 1fr));
+  gap: var(--space-3);
+}
+
+.info-item {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  background-color: var(--surface-1);
+  border: 1px dashed var(--surface-border-strong);
+  overflow: hidden;
+  transition:
+    border-color var(--dur-base) var(--ease-out),
+    background-color var(--dur-base) var(--ease-out),
+    transform var(--dur-base) var(--ease-out);
+}
+
+.info-item:hover {
+  border-color: var(--primary);
+  background-color: var(--surface-2);
+  transform: translateY(-2px);
+}
+
+.info-item__label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-2xs);
+  font-weight: 700;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.info-item__label svg {
+  width: 0.8rem;
+  height: 0.8rem;
+  color: var(--text-muted);
+}
+
+.info-item__value {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+.info-item__value--mono {
+  font-family: var(--font-mono);
+  letter-spacing: 0.02em;
+}
+
+/* Lock marker: these fields are read-only by design */
+.info-item__lock {
+  position: absolute;
+  top: var(--space-3);
+  right: var(--space-3);
+  color: var(--text-faint);
+  opacity: 0.55;
+}
+
+.info-item__lock svg {
+  width: 0.85rem;
+  height: 0.85rem;
+}
+
+.info-item--locked {
+  cursor: help;
+}
+
+/* ---------- Achievement shelf ---------- */
+.shelf {
+  display: flex;
+  gap: var(--space-3);
+  overflow-x: auto;
+  padding-bottom: var(--space-2);
+  scrollbar-width: thin;
+}
+
+.achievement {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+  width: 6.5rem;
+  padding: var(--space-4) var(--space-2);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--surface-border);
+  background-color: var(--surface-1);
+  text-align: center;
+  transition:
+    transform var(--dur-base) var(--ease-spring),
+    box-shadow var(--dur-base) var(--ease-out),
+    border-color var(--dur-base) var(--ease-out);
+}
+
+.achievement:hover {
+  transform: translate3d(0, -6px, 0) rotate(-1.5deg);
+  box-shadow: var(--shadow-lg);
+  border-color: var(--surface-border-glow);
+}
+
+.achievement__medal {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 50%;
+  background-image: linear-gradient(
+    140deg,
+    var(--ach-from, var(--signal-400)),
+    var(--ach-to, var(--signal-600))
+  );
+  color: #fff;
+  box-shadow: var(--shadow-md), inset 0 1px 0 oklch(1 0 0 / 0.4);
+}
+
+/* Radial sheen on the medal face */
+.achievement__medal::before {
+  content: '';
+  position: absolute;
+  inset: 3px;
+  border-radius: 50%;
+  background-image:
+    repeating-conic-gradient(
+      from 0deg,
+      oklch(1 0 0 / 0.18) 0deg 8deg,
+      transparent 8deg 16deg
+    );
+  opacity: 0.7;
+}
+
+.achievement__medal svg {
+  position: relative;
+  width: 1.35rem;
+  height: 1.35rem;
+  stroke-width: 2.25;
+}
+
+.achievement__name {
+  font-size: var(--text-2xs);
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.3;
+}
+
+.achievement__date {
+  font-size: 9px;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+}
+
+/* ---------- Stats strip ---------- */
+.profile-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr));
+  gap: var(--space-1);
+  padding: var(--space-4);
+  border-radius: var(--radius-lg);
+  background-color: var(--surface-1);
+  border: 1px solid var(--surface-border);
+  backdrop-filter: blur(var(--blur-md));
+  -webkit-backdrop-filter: blur(var(--blur-md));
+}
+
+.profile-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: var(--space-2);
+  border-radius: var(--radius-md);
+  transition:
+    background-color var(--dur-base) var(--ease-out),
+    transform var(--dur-base) var(--ease-out);
+}
+
+.profile-stat:hover {
+  background-color: var(--surface-2);
+  transform: translateY(-2px);
+}
+
+.profile-stat__value {
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  font-weight: 800;
+  color: var(--text-primary);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.profile-stat__label {
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.profile-stat__divider {
+  width: 1px;
+  align-self: stretch;
+  background-color: var(--surface-border);
+}
+
+/* ---------- Social link row ---------- */
+.social-row {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.social-btn {
+  display: grid;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: var(--radius-sm);
+  background-color: var(--surface-2);
+  border: 1px solid var(--surface-border);
+  color: var(--text-muted);
+  transition:
+    transform var(--dur-base) var(--ease-spring),
+    background-color var(--dur-base) var(--ease-out),
+    color var(--dur-base) var(--ease-out),
+    border-color var(--dur-base) var(--ease-out);
+}
+
+.social-btn:hover {
+  transform: translateY(-3px) rotate(-6deg);
+  color: var(--primary);
+  border-color: var(--primary);
+  background-color: var(--primary-soft);
+}
+
+.social-btn svg {
+  width: 1.05rem;
+  height: 1.05rem;
+}
+
+/* ---------- Editable-field notice ---------- */
+.lock-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1px dashed var(--surface-border-strong);
+  background-color: var(--surface-1);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  line-height: var(--leading-snug);
+}
+
+.lock-notice svg {
+  width: 1rem;
+  height: 1rem;
+  flex-shrink: 0;
+  margin-top: 1px;
+  color: var(--text-faint);
+}
+
+@media (max-width: 640px) {
+  .profile-hero {
+    padding: var(--space-5);
+    border-radius: var(--radius-xl);
+  }
+
+  .profile-hero__id {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-3);
+  }
+
+  .profile-hero__avatar .avatar {
+    --avatar-size: 5rem;
+  }
+
+  .profile-hero__name {
+    font-size: var(--text-xl);
+  }
+}

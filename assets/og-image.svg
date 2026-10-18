@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Open Graph card art (1200x630).
+
+  NOTE: Facebook, X/Twitter and LinkedIn do NOT render SVG for og:image — they
+  require a raster image. Export this to assets/og-image.png (1200x630) before
+  you rely on link previews, and point the meta tag at the .png instead.
+  See README > "Triển khai GitHub Pages".
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-label="UTC Student — Cổng thông tin sinh viên">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0d1018"/>
+      <stop offset="100%" stop-color="#141a2e"/>
+    </linearGradient>
+    <linearGradient id="brand" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#6366f1"/>
+      <stop offset="55%" stop-color="#8b5cf6"/>
+      <stop offset="100%" stop-color="#06b6d4"/>
+    </linearGradient>
+    <radialGradient id="glowA" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0%" stop-color="#6366f1" stop-opacity="0.55"/>
+      <stop offset="100%" stop-color="#6366f1" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glowB" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0%" stop-color="#06b6d4" stop-opacity="0.45"/>
+      <stop offset="100%" stop-color="#06b6d4" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="title" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#a5b4fc"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <circle cx="150" cy="90" r="420" fill="url(#glowA)"/>
+  <circle cx="1080" cy="600" r="380" fill="url(#glowB)"/>
+
+  <!-- blueprint grid -->
+  <g stroke="#ffffff" stroke-opacity="0.05" stroke-width="1">
+    <path d="M0 90H1200M0 180H1200M0 270H1200M0 360H1200M0 450H1200M0 540H1200"/>
+    <path d="M120 0V630M240 0V630M360 0V630M480 0V630M600 0V630M720 0V630M840 0V630M960 0V630M1080 0V630"/>
+  </g>
+
+  <!-- brand mark -->
+  <g transform="translate(88 92)">
+    <rect width="88" height="88" rx="24" fill="url(#brand)"/>
+    <g transform="translate(44 44)" fill="none" stroke="#ffffff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M-22 -8 L0 -20 L22 -8 L0 4 Z"/>
+      <path d="M-22 -8 V8 C-22 16 -10 20 0 20 C10 20 22 16 22 8 V-8"/>
+    </g>
+  </g>
+
+  <text x="88" y="300" font-family="Segoe UI, Be Vietnam Pro, system-ui, sans-serif" font-size="86" font-weight="800" fill="url(#title)" letter-spacing="-2">UTC Student</text>
+  <text x="88" y="362" font-family="Segoe UI, Be Vietnam Pro, system-ui, sans-serif" font-size="34" font-weight="600" fill="#94a3b8" letter-spacing="1">CỔNG THÔNG TIN SINH VIÊN</text>
+
+  <rect x="88" y="404" width="4" height="44" rx="2" fill="#6366f1"/>
+  <text x="116" y="436" font-family="Segoe UI, Be Vietnam Pro, system-ui, sans-serif" font-size="26" font-weight="500" fill="#cbd5e1">Đại học Giao thông vận tải và Truyền thông</text>
+
+  <g font-family="Segoe UI, Be Vietnam Pro, system-ui, sans-serif" font-size="22" font-weight="600" fill="#e2e8f0">
+    <g transform="translate(88 512)">
+      <rect width="196" height="46" rx="14" fill="#ffffff" fill-opacity="0.06" stroke="#ffffff" stroke-opacity="0.12"/>
+      <text x="22" y="30">Thời khóa biểu</text>
+    </g>
+    <g transform="translate(300 512)">
+      <rect width="176" height="46" rx="14" fill="#ffffff" fill-opacity="0.06" stroke="#ffffff" stroke-opacity="0.12"/>
+      <text x="22" y="30">Tin tức</text>
+    </g>
+    <g transform="translate(492 512)">
+      <rect width="168" height="46" rx="14" fill="#ffffff" fill-opacity="0.06" stroke="#ffffff" stroke-opacity="0.12"/>
+      <text x="22" y="30">Tài liệu</text>
+    </g>
+    <g transform="translate(676 512)">
+      <rect width="152" height="46" rx="14" fill="#ffffff" fill-opacity="0.06" stroke="#ffffff" stroke-opacity="0.12"/>
+      <text x="22" y="30">Bài đăng</text>
+    </g>
+    <g transform="translate(844 512)">
+      <rect width="164" height="46" rx="14" fill="#ffffff" fill-opacity="0.06" stroke="#ffffff" stroke-opacity="0.12"/>
+      <text x="22" y="30">Tin nhắn</text>
+    </g>
+  </g>
+</svg>

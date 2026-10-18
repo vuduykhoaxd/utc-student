@@ -1,0 +1,274 @@
+/* ==========================================================================
+   UTC STUDENT — DESIGN TOKENS
+   Single source of truth for colour, type, space, elevation and motion.
+   Authored in OKLCH for perceptual uniformity.
+   ========================================================================== */
+
+:root {
+  /* ---------- Brand ramp (UTC blue) ---------- */
+  --brand-50: oklch(0.97 0.015 255);
+  --brand-100: oklch(0.93 0.04 256);
+  --brand-200: oklch(0.87 0.075 257);
+  --brand-300: oklch(0.79 0.12 258);
+  --brand-400: oklch(0.71 0.165 258);
+  --brand-500: oklch(0.63 0.19 258);
+  --brand-600: oklch(0.55 0.2 259);
+  --brand-700: oklch(0.47 0.18 260);
+  --brand-800: oklch(0.39 0.145 261);
+  --brand-900: oklch(0.32 0.11 262);
+  --brand-950: oklch(0.22 0.08 264);
+
+  /* ---------- Accent ramp (aurora cyan) ---------- */
+  --accent-200: oklch(0.9 0.09 195);
+  --accent-300: oklch(0.83 0.12 194);
+  --accent-400: oklch(0.76 0.14 193);
+  --accent-500: oklch(0.69 0.145 193);
+  --accent-600: oklch(0.6 0.13 194);
+  --accent-900: oklch(0.3 0.07 196);
+
+  /* ---------- Signal ramp (solar amber) ---------- */
+  --signal-300: oklch(0.86 0.13 78);
+  --signal-400: oklch(0.8 0.15 72);
+  --signal-500: oklch(0.73 0.16 66);
+  --signal-600: oklch(0.65 0.15 57);
+
+  /* ---------- Violet (secondary highlight) ---------- */
+  --violet-400: oklch(0.72 0.16 300);
+  --violet-500: oklch(0.63 0.19 300);
+  --violet-600: oklch(0.55 0.2 302);
+
+  /* ---------- Semantic ---------- */
+  --danger-400: oklch(0.7 0.19 22);
+  --danger-500: oklch(0.62 0.21 25);
+  --success-400: oklch(0.76 0.16 152);
+  --success-500: oklch(0.68 0.17 152);
+  --info-400: oklch(0.74 0.13 226);
+
+  /* ---------- Radii ---------- */
+  --radius-xs: 6px;
+  --radius-sm: 9px;
+  --radius-md: 13px;
+  --radius-lg: 18px;
+  --radius-xl: 24px;
+  --radius-2xl: 32px;
+  --radius-pill: 999px;
+
+  /* ---------- Spacing rhythm (4px base) ---------- */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+  --space-20: 5rem;
+
+  /* ---------- Fluid type scale ---------- */
+  --font-sans: 'Be Vietnam Pro', ui-sans-serif, system-ui, 'Segoe UI', sans-serif;
+  --font-display: 'Sora', 'Be Vietnam Pro', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Consolas, monospace;
+
+  --text-2xs: clamp(0.625rem, 0.6rem + 0.1vw, 0.6875rem);
+  --text-xs: clamp(0.6875rem, 0.66rem + 0.12vw, 0.75rem);
+  --text-sm: clamp(0.8125rem, 0.79rem + 0.12vw, 0.875rem);
+  --text-base: clamp(0.9375rem, 0.91rem + 0.14vw, 1rem);
+  --text-md: clamp(1rem, 0.96rem + 0.2vw, 1.125rem);
+  --text-lg: clamp(1.125rem, 1.05rem + 0.36vw, 1.375rem);
+  --text-xl: clamp(1.375rem, 1.24rem + 0.66vw, 1.875rem);
+  --text-2xl: clamp(1.75rem, 1.5rem + 1.2vw, 2.75rem);
+  --text-3xl: clamp(2.25rem, 1.7rem + 2.6vw, 4.25rem);
+
+  --leading-tight: 1.15;
+  --leading-snug: 1.35;
+  --leading-normal: 1.6;
+  --leading-relaxed: 1.75;
+
+  --tracking-tight: -0.022em;
+  --tracking-snug: -0.012em;
+  --tracking-normal: 0;
+  --tracking-wide: 0.04em;
+  --tracking-widest: 0.12em;
+
+  /* ---------- Blur / translucency ---------- */
+  --blur-sm: 8px;
+  --blur-md: 16px;
+  --blur-lg: 28px;
+  --blur-xl: 48px;
+
+  /* ---------- Layout constants ---------- */
+  --sidebar-w: 268px;
+  --sidebar-w-collapsed: 76px;
+  --topbar-h: 68px;
+  --content-max: 1400px;
+  --safe-gutter: clamp(1rem, 3.4vw, 2.75rem);
+
+  /* ---------- Z-index ladder ---------- */
+  --z-base: 0;
+  --z-sticky: 100;
+  --z-drawer: 200;
+  --z-overlay: 300;
+  --z-modal: 400;
+  --z-popover: 500;
+  --z-toast: 600;
+  --z-tooltip: 700;
+
+  /* ---------- Motion: durations ---------- */
+  --dur-instant: 80ms;
+  --dur-fast: 150ms;
+  --dur-base: 240ms;
+  --dur-slow: 380ms;
+  --dur-slower: 560ms;
+  --dur-ambient: 18s;
+  --dur-ambient-slow: 32s;
+
+  /* ---------- Motion: easings ---------- */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-in: cubic-bezier(0.55, 0, 1, 0.45);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-overshoot: cubic-bezier(0.16, 1.3, 0.3, 1);
+  --ease-smooth: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* ---------- Layout transition ---------- */
+  --layout-ease: var(--ease-out);
+  --layout-dur: var(--dur-slow);
+}
+
+/* ==========================================================================
+   DARK THEME (default) — "Midnight Aurora"
+   ========================================================================== */
+:root,
+[data-theme='dark'] {
+  color-scheme: dark;
+
+  --canvas: oklch(0.145 0.024 265);
+  --canvas-deep: oklch(0.105 0.02 266);
+  --canvas-raised: oklch(0.195 0.026 264);
+
+  --surface-1: oklch(0.205 0.028 264 / 0.62);
+  --surface-2: oklch(0.245 0.03 263 / 0.72);
+  --surface-3: oklch(0.29 0.032 262 / 0.82);
+  --surface-solid: oklch(0.225 0.028 264);
+  --surface-inverse: oklch(0.96 0.005 260);
+
+  --surface-border: oklch(0.98 0.01 250 / 0.09);
+  --surface-border-strong: oklch(0.98 0.01 250 / 0.16);
+  --surface-border-glow: oklch(0.75 0.14 250 / 0.32);
+
+  --text-primary: oklch(0.97 0.006 255);
+  --text-secondary: oklch(0.79 0.014 258);
+  --text-muted: oklch(0.63 0.018 260);
+  --text-faint: oklch(0.5 0.02 262);
+  --text-on-accent: oklch(0.99 0 0);
+
+  --primary: var(--brand-400);
+  --primary-hover: var(--brand-300);
+  --primary-strong: var(--brand-500);
+  --primary-soft: oklch(0.71 0.165 258 / 0.14);
+  --primary-soft-hover: oklch(0.71 0.165 258 / 0.22);
+  --primary-ring: oklch(0.71 0.165 258 / 0.45);
+  --primary-contrast: oklch(0.14 0.03 265);
+
+  --accent: var(--accent-400);
+  --accent-soft: oklch(0.76 0.14 193 / 0.14);
+
+  --signal: var(--signal-400);
+  --signal-soft: oklch(0.8 0.15 72 / 0.15);
+  --violet: var(--violet-400);
+  --violet-soft: oklch(0.72 0.16 300 / 0.15);
+  --danger: var(--danger-400);
+  --danger-soft: oklch(0.7 0.19 22 / 0.15);
+  --success: var(--success-400);
+  --success-soft: oklch(0.76 0.16 152 / 0.15);
+  --info: var(--info-400);
+  --info-soft: oklch(0.74 0.13 226 / 0.15);
+
+  --shadow-color: 265 40% 2%;
+  --shadow-xs: 0 1px 2px hsl(var(--shadow-color) / 0.4);
+  --shadow-sm: 0 2px 6px hsl(var(--shadow-color) / 0.42), 0 1px 2px hsl(var(--shadow-color) / 0.3);
+  --shadow-md: 0 8px 20px -6px hsl(var(--shadow-color) / 0.5), 0 3px 8px -4px hsl(var(--shadow-color) / 0.4);
+  --shadow-lg: 0 20px 42px -14px hsl(var(--shadow-color) / 0.6), 0 8px 18px -8px hsl(var(--shadow-color) / 0.45);
+  --shadow-xl: 0 36px 70px -20px hsl(var(--shadow-color) / 0.7), 0 14px 30px -12px hsl(var(--shadow-color) / 0.5);
+  --shadow-glow: 0 0 0 1px oklch(0.75 0.14 250 / 0.2), 0 8px 30px -6px oklch(0.63 0.19 258 / 0.4);
+
+  /* Grain is plain alpha, not a blend — see `.backdrop__grain` in textures.css
+     for the measurement that drove that decision. */
+  --grain-opacity: 0.03;
+  --aurora-opacity: 0.62;
+  --grid-opacity: 0.5;
+}
+
+/* ==========================================================================
+   LIGHT THEME — "Porcelain"
+   ========================================================================== */
+[data-theme='light'] {
+  color-scheme: light;
+
+  --canvas: oklch(0.975 0.008 250);
+  --canvas-deep: oklch(0.94 0.014 250);
+  --canvas-raised: oklch(1 0 0);
+
+  --surface-1: oklch(1 0 0 / 0.72);
+  --surface-2: oklch(1 0 0 / 0.86);
+  --surface-3: oklch(0.985 0.006 250 / 0.95);
+  --surface-solid: oklch(1 0 0);
+  --surface-inverse: oklch(0.2 0.03 265);
+
+  --surface-border: oklch(0.4 0.06 265 / 0.11);
+  --surface-border-strong: oklch(0.4 0.06 265 / 0.2);
+  --surface-border-glow: oklch(0.63 0.19 258 / 0.3);
+
+  --text-primary: oklch(0.24 0.032 264);
+  --text-secondary: oklch(0.42 0.03 262);
+  --text-muted: oklch(0.55 0.026 262);
+  --text-faint: oklch(0.66 0.02 262);
+  --text-on-accent: oklch(0.99 0 0);
+
+  --primary: var(--brand-600);
+  --primary-hover: var(--brand-700);
+  --primary-strong: var(--brand-700);
+  --primary-soft: oklch(0.63 0.19 258 / 0.1);
+  --primary-soft-hover: oklch(0.63 0.19 258 / 0.17);
+  --primary-ring: oklch(0.55 0.2 259 / 0.35);
+  --primary-contrast: oklch(0.99 0 0);
+
+  --accent: var(--accent-600);
+  --accent-soft: oklch(0.6 0.13 194 / 0.13);
+
+  --signal: var(--signal-600);
+  --signal-soft: oklch(0.65 0.15 57 / 0.14);
+  --violet: var(--violet-600);
+  --violet-soft: oklch(0.55 0.2 302 / 0.12);
+  --danger: var(--danger-500);
+  --danger-soft: oklch(0.62 0.21 25 / 0.1);
+  --success: var(--success-500);
+  --success-soft: oklch(0.68 0.17 152 / 0.12);
+  --info: var(--info-400);
+  --info-soft: oklch(0.74 0.13 226 / 0.13);
+
+  --shadow-color: 250 45% 45%;
+  --shadow-xs: 0 1px 2px hsl(var(--shadow-color) / 0.1);
+  --shadow-sm: 0 2px 6px hsl(var(--shadow-color) / 0.09), 0 1px 2px hsl(var(--shadow-color) / 0.06);
+  --shadow-md: 0 10px 22px -8px hsl(var(--shadow-color) / 0.16), 0 3px 8px -4px hsl(var(--shadow-color) / 0.1);
+  --shadow-lg: 0 22px 44px -16px hsl(var(--shadow-color) / 0.2), 0 8px 18px -8px hsl(var(--shadow-color) / 0.12);
+  --shadow-xl: 0 38px 72px -24px hsl(var(--shadow-color) / 0.26), 0 14px 30px -12px hsl(var(--shadow-color) / 0.14);
+  --shadow-glow: 0 0 0 1px oklch(0.63 0.19 258 / 0.18), 0 8px 26px -8px oklch(0.63 0.19 258 / 0.28);
+
+  --grain-opacity: 0.024;
+  --aurora-opacity: 0.5;
+  --grid-opacity: 0.7;
+}
+
+/* High-contrast user preference: tighten borders, drop translucency */
+@media (prefers-contrast: more) {
+  :root {
+    --surface-1: var(--surface-solid);
+    --surface-2: var(--surface-solid);
+    --surface-3: var(--surface-solid);
+    --surface-border: var(--surface-border-strong);
+    --glass-blur: none;
+  }
+}
