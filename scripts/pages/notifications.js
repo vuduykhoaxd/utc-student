@@ -23,6 +23,7 @@ const META = {
   grade: { iconName: 'award', label: 'Điểm số', tone: 'success', route: '/schedule' },
   chat: { iconName: 'messages', label: 'Tin nhắn', tone: 'accent', route: '/chat' },
   friend: { iconName: 'users', label: 'Bạn bè', tone: 'violet', route: '/friends' },
+  post: { iconName: 'messages', label: 'Bài đăng', tone: 'brand', route: '/posts' },
   doc: { iconName: 'fileText', label: 'Tài liệu', tone: 'signal', route: '/documents' },
   alert: { iconName: 'alert', label: 'Quan trọng', tone: 'danger', route: '/notifications' },
 };
@@ -34,6 +35,7 @@ const TONE_COLOR = {
   violet: 'var(--violet)',
   danger: 'var(--danger)',
   success: 'var(--success)',
+  brand: 'var(--brand)',
 };
 
 /** @param {HTMLElement} outlet */
@@ -172,6 +174,8 @@ export async function notificationsPage(ctx) {
       { id: 'all', label: 'Tất cả', iconName: 'inbox' },
       { id: 'unread', label: 'Chưa đọc', iconName: 'bell' },
       { id: 'chat', label: 'Tin nhắn', iconName: 'messages' },
+      { id: 'friend', label: 'Bạn bè', iconName: 'users' },
+      { id: 'post', label: 'Bài đăng', iconName: 'messages' },
       { id: 'grade', label: 'Điểm số', iconName: 'award' },
       { id: 'alert', label: 'Quan trọng', iconName: 'alert' },
     ],

@@ -63,6 +63,22 @@ export function observeReveals(root = document) {
   });
 }
 
+/**
+ * Reveal an updated subtree immediately.
+ *
+ * Content that replaces existing content (a filtered grid, a redrawn panel)
+ * must not wait for an observer: the nodes are new, so the scroll observer will
+ * never see them and they would stay at `opacity: 0` forever. Unlike
+ * `revealNow()` this does not stagger, because an in-place update should not
+ * re-choreograph the whole list.
+ */
+export function revealRendered(root) {
+  if (!root) return;
+  root.querySelectorAll('[data-reveal]:not(.is-revealed)').forEach((node) => {
+    node.classList.add('is-revealed');
+  });
+}
+
 /** Immediately reveal everything under a freshly rendered subtree. */
 export function revealNow(root) {
   requestAnimationFrame(() => {

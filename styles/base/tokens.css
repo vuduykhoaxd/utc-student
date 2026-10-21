@@ -133,8 +133,8 @@
   --ease-smooth: cubic-bezier(0.4, 0, 0.2, 1);
 
   /* ---------- Layout transition ---------- */
-  --layout-ease: var(--ease-out);
-  --layout-dur: var(--dur-slow);
+  --layout-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --layout-dur: 260ms;
 }
 
 /* ==========================================================================

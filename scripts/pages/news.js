@@ -8,14 +8,9 @@ import { icon } from '../components/icons.js';
 import {
   button,
   panel,
-  badge,
-  chip,
-  avatar,
   emptyState,
-  tag,
   iconTile,
   notice,
-  tabs as tabsFactory,
 } from '../components/ui.js';
 import { searchInput } from '../components/forms.js';
 import { pageHeader, section, backLink } from '../components/page.js';
@@ -31,31 +26,28 @@ import { formatDate, timeAgo, formatBytes } from '../utils/format.js';
 export async function newsPage(ctx) {
   const outlet = ctx.outlet;
 
-  const state = { category: 'all', query: '', items: [], loading: true };
+  const state = {
+    query: '',
+    items: [],
+    loading: true,
+    /** True once the portal feed rendered. */
+    live: false,
+    page: 1,
+    pageSize: 20,
+  };
 
   const grid = el('div.grid.grid-auto-lg');
   const featuredSlot = el('div');
+  const subtitleSlot = el('span');
+  const captionSlot = el('span', {}, 'Sắp xếp theo thời gian đăng');
 
-  const tabsItems = [
-    { id: 'all', label: 'Tất cả' },
-    { id: 'hoc-thi', label: 'Học & Thi', iconName: 'graduation' },
-    { id: 'thong-bao', label: 'Thông báo', iconName: 'megaphone' },
-    { id: 'khoa', label: 'Khoa & Viện', iconName: 'building' },
-    { id: 'su-kien', label: 'Sự kiện', iconName: 'sparkle' },
-    { id: 'hoc-bong', label: 'Học bổng', iconName: 'award' },
-    { id: 'hoat-dong', label: 'Hoạt động', iconName: 'flame' },
-  ];
-
-  const tabBar = tabsFactory({
-    items: tabsItems,
-    active: 'all',
-    onChange: (id) => {
-      state.category = id;
-      tabBar.update(id);
-      load();
-    },
-  });
-
+  /**
+   * Search only.
+   *
+   * The portal's announcements carry no reliable category, and filtering by
+   * publisher duplicated the byline shown on every card, so both rails were
+   * removed in favour of a single search field.
+   */
   const search = searchInput({
     placeholder: 'Tìm theo tiêu đề hoặc nội dung…',
     onInput: (value) => {
@@ -64,18 +56,60 @@ export async function newsPage(ctx) {
     },
   });
 
+  /**
+   * Sequence guard.
+   *
+   * Requests are debounced but not serialised: a slow response for "toán" can
+   * arrive after the response for "toán giải tích" and overwrite it. Only the
+   * newest request is allowed to paint.
+   */
+  let loadToken = 0;
+
   async function load() {
-    state.loading = true;
-    draw();
+    const token = ++loadToken;
+
+    // Keep the current cards on screen while searching; the skeleton is only
+    // for the very first paint, where there is nothing to keep.
+    if (!state.items.length) {
+      state.loading = true;
+      draw();
+    }
 
     try {
-      state.items = await newsApi.list({ category: state.category, query: state.query });
+      // Prefer the portal; fall back to the bundled dataset so the page is
+      // never blank just because the backend is down.
+      const live = await newsApi.listLive({
+        page: state.page,
+        pageSize: state.pageSize,
+        query: state.query,
+      });
+
+      if (token !== loadToken) return;
+
+      if (live) {
+        state.live = true;
+        state.items = live.items;
+      } else {
+        const demo = await newsApi.list({ query: state.query });
+        if (token !== loadToken) return;
+        state.items = demo;
+      }
     } catch (error) {
+      if (token !== loadToken) return;
       console.error(error);
       state.items = [];
     }
 
     state.loading = false;
+
+    subtitleSlot.textContent = state.live
+      ? 'Nội dung trực tiếp từ cổng thông tin sinh viên UTC'
+      : 'Đang hiển thị dữ liệu mẫu — không kết nối được hệ thống nhà trường';
+
+    captionSlot.textContent = state.live
+      ? 'Sắp xếp theo thời gian đăng'
+      : 'Dữ liệu mẫu';
+
     draw();
   }
 
@@ -87,7 +121,7 @@ export async function newsPage(ctx) {
     render(featuredSlot, featured ? featuredCard(featured) : null);
 
     if (state.loading) {
-      render(grid, 
+      render(grid,
         ...Array.from({ length: 6 }, (_, i) =>
           el('div.skeleton', {
             style: { height: '13rem', borderRadius: 'var(--radius-lg)', animationDelay: `${i * 60}ms` },
@@ -98,23 +132,23 @@ export async function newsPage(ctx) {
     }
 
     if (!rest.length) {
-      render(grid, 
+      render(grid,
         emptyState({
           iconName: 'search',
           title: 'Không tìm thấy bài viết phù hợp',
-          message: 'Thử đổi từ khoá hoặc chọn chuyên mục khác nhé.',
-          action: button({
-            label: 'Xoá bộ lọc',
-            variant: 'soft',
-            iconName: 'refresh',
-            onclick: () => {
-              state.category = 'all';
-              state.query = '';
-              search.input.value = '';
-              tabBar.update('all');
-              load();
-            },
-          }),
+          message: 'Thử tìm bằng từ khoá khác nhé.',
+          action: state.query
+            ? button({
+                label: 'Xoá tìm kiếm',
+                variant: 'soft',
+                iconName: 'refresh',
+                onclick: () => {
+                  state.query = '';
+                  search.input.value = '';
+                  load();
+                },
+              })
+            : null,
         })
       );
       return;
@@ -128,13 +162,12 @@ export async function newsPage(ctx) {
       eyebrow: 'Kênh thông tin',
       eyebrowIcon: 'megaphone',
       title: 'Tin tức & Thông báo',
-      subtitle: 'Cập nhật từ nhà trường, khoa và các tổ chức sinh viên. Đọc là đánh dấu đã xem.',
+      subtitle: subtitleSlot,
     }),
-    tabBar.node,
     el('div.toolbar', {}, [
       el('div.toolbar__search', {}, search.node),
       el('div.toolbar__divider'),
-      el('span.caption', {}, 'Sắp xếp theo thời gian đăng'),
+      el('span.caption', {}, captionSlot),
     ]),
     featuredSlot,
     section({ children: grid }),
@@ -179,9 +212,10 @@ function featuredCard(article) {
         el('h2.featured__title', {}, article.title),
         el('p.featured__excerpt', {}, article.excerpt),
         el('div.featured__footer', {}, [
-          el('span', {}, article.author),
+          el('span', {}, bylineOf(article)),
           el('span', {}, '•'),
           el('span', {}, timeAgo(article.publishedAt)),
+          validityOf(article) ? el('span', {}, ['•', validityOf(article)]) : null,
         ]),
         el('span.featured__cta', {}, [el('span', {}, 'Đọc tiếp'), icon('arrowRight')]),
       ]),
@@ -213,7 +247,7 @@ function articleCard(article, index = 0) {
       el('div.article__top', {}, [
         el('span.article__cat', {}, [
           icon(cat?.iconName ?? 'news'),
-          el('span', {}, cat?.label ?? 'Tin tức'),
+          el('span', {}, cat?.label ?? article.publisher ?? 'Tin tức'),
         ]),
         el('span.article__date', {}, formatDate(article.publishedAt, 'short')),
       ]),
@@ -223,14 +257,49 @@ function articleCard(article, index = 0) {
         el('div.article__author', {}, [
           iconTile({ iconName: 'building', tone: 'primary', size: 'sm' }),
           el('div.stack', { style: { gap: 0, minWidth: 0 } }, [
-            el('span.article__author-name', {}, article.author),
-            el('span.caption', {}, `${formatNumberSafe(article.views)} lượt đọc`),
+            el('span.article__author-name', {}, bylineOf(article)),
+            // The portal exposes no view counter, so a count would be a lie.
+            article.source === 'utc'
+              ? null
+              : el('span.caption', {}, `${formatNumberSafe(article.views)} lượt đọc`),
           ]),
         ]),
         el('span.article__read', {}, [el('span', {}, 'Đọc'), icon('arrowRight')]),
       ]),
     ]
   );
+}
+
+/**
+ * Who published this.
+ *
+ * The portal's author field often repeats the department name verbatim
+ * ("Phòng CTCT&SV Phòng CTCT&SV"), so a publisher that is a prefix of the author
+ * wins, and an author that is just the publisher repeated is collapsed.
+ */
+function bylineOf(article) {
+  const author = String(article.author ?? '').trim();
+  const publisher = String(article.publisher ?? '').trim();
+
+  if (!publisher) return author || 'Nhà trường';
+  if (!author) return publisher;
+
+  // "Phòng CTCT&SV Phòng CTCT&SV" -> "Phòng CTCT&SV"
+  if (author.startsWith(publisher) && author.slice(publisher.length).trim() === publisher) {
+    return publisher;
+  }
+
+  return publisher;
+}
+
+/** Validity window, when the portal supplied one. */
+function validityOf(article) {
+  if (!article.validFrom && !article.validTo) return null;
+
+  const from = article.validFrom ? formatDate(article.validFrom, 'short') : '…';
+  const to = article.validTo ? formatDate(article.validTo, 'short') : '…';
+
+  return `Hiệu lực ${from} → ${to}`;
 }
 
 function formatNumberSafe(value) {
@@ -251,10 +320,20 @@ export async function newsDetailPage(ctx) {
   let all;
 
   try {
-    [article, all] = await Promise.all([
-      newsApi.get(ctx.params.id),
-      newsApi.list({ limit: 5 }),
-    ]);
+    // The live feed carries the article body, so prefer it; the bundled article
+    // is the fallback when the backend is unreachable.
+    const liveArticle = await newsApi.getLive(ctx.params.id);
+
+    if (liveArticle) {
+      article = liveArticle;
+      const feed = await newsApi.listLive({ pageSize: 6 });
+      all = feed?.items ?? [];
+    } else {
+      [article, all] = await Promise.all([
+        newsApi.get(ctx.params.id),
+        newsApi.list({ limit: 5 }),
+      ]);
+    }
   } catch (error) {
     render(outlet, 
       emptyState({
@@ -295,10 +374,18 @@ export async function newsDetailPage(ctx) {
         el('div.row-3.row-wrap', {}, [
           el('div.row-2', {}, [
             iconTile({ iconName: 'building', tone: 'info', size: 'sm' }),
-            el('span', { style: { fontSize: 'var(--text-sm)', fontWeight: 600 } }, article.author),
+            el('span', { style: { fontSize: 'var(--text-sm)', fontWeight: 600 } }, bylineOf(article)),
           ]),
-          el('span', { style: { opacity: 0.6 } }, '•'),
-          el('span', { style: { fontSize: 'var(--text-sm)' } }, `${formatNumberSafe(article.views)} lượt đọc`),
+          // The portal has no view counter; showing a zero would be a fiction.
+          article.source === 'utc'
+            ? null
+            : [
+                el('span', { style: { opacity: 0.6 } }, '•'),
+                el('span', { style: { fontSize: 'var(--text-sm)' } }, `${formatNumberSafe(article.views)} lượt đọc`),
+              ],
+          validityOf(article)
+            ? el('span.article__valid', {}, validityOf(article))
+            : null,
         ]),
       ]),
     ]),
@@ -312,7 +399,7 @@ export async function newsDetailPage(ctx) {
             })
           : null,
 
-        el('p.reader__content', { 'data-reveal': '', style: { '--reveal-delay': '100ms' } }, article.content),
+        el('p.reader__content', { 'data-reveal': '', style: { '--reveal-delay': '100ms' } }, article.body ?? article.content ?? ''),
 
         article.attachments?.length
           ? panel({

@@ -51,109 +51,89 @@ export const REGISTRY = {
   /* ---------------------------------------------------------------------- */
   image: {
     label: 'Hình ảnh',
-    enabled: false,
+    enabled: true,
     iconName: 'image',
-    description: 'Gửi ảnh, thumbnail và tải về bản đầy đủ.',
-    future: true,
+    description: 'Gửi ảnh chụp màn hình, ảnh chú thích bài học.',
+    accept: 'image/png,image/jpeg,image/webp,image/gif',
     validate: (payload) => typeof payload?.url === 'string',
-    render: (attachment) =>
-      el('div.attach.attach--image', {}, [
-        el('span.attach__icon', {}, icon('image')),
-        el('div.attach__text', {}, [
-          el('span.attach__name', {}, attachment.payload.alt ?? 'Hình ảnh'),
-          el('span.attach__meta', {}, 'Tính năng đang phát triển'),
-        ]),
-      ]),
-  },
 
-  /* ---------------------------------------------------------------------- */
-  voice: {
-    label: 'Tin nhắn thoại',
-    enabled: false,
-    iconName: 'mic',
-    description: 'Ghi âm và gửi tin nhắn thoại.',
-    future: true,
-    validate: (payload) =>
-      typeof payload?.url === 'string' && typeof payload?.durationSec === 'number',
-    render: (attachment) =>
-      el('div.attach.attach--voice', {}, [
-        el('span.attach__icon', {}, icon('mic')),
-        el('div.attach__text', {}, [
-          el('span.attach__name', {}, `Tin thoại ${attachment.payload.durationSec}s`),
-          el('span.attach__meta', {}, 'Tính năng đang phát triển'),
-        ]),
-        el('span.attach__icon', {}, icon('play')),
-      ]),
-  },
+    /**
+     * Render the image itself, not a placeholder.
+     *
+     * `objectUrl` is filled in by the page once the blob has been fetched —
+     * an <img> cannot carry the session header, so a plain `src` would 401.
+     */
+    render: (attachment) => {
+      const payload = attachment.payload ?? {};
 
-  /* ---------------------------------------------------------------------- */
-  gif: {
-    label: 'GIF',
-    enabled: false,
-    iconName: 'gif',
-    description: 'Tra cứu và gửi ảnh GIF.',
-    future: true,
-    validate: (payload) => typeof payload?.url === 'string',
-    render: (attachment) =>
-      el('div.attach.attach--gif', {}, [
-        el('span.attach__icon', {}, icon('gif')),
+      const media = el('img.attach__img', {
+        alt: payload.fileName ?? 'Hình ảnh đính kèm',
+        loading: 'lazy',
+        // Filled in after the row is rendered, once the blob has been fetched.
+        'data-attachment': attachment.id,
+      });
+
+      if (payload.objectUrl) media.src = payload.objectUrl;
+      // Dimmed until the page hands over the real bytes, so the row does not
+      // look broken while the blob is being fetched.
+      else media.style.opacity = '0.35';
+
+      return el('div.attach.attach--image', {}, [
+        media,
         el('div.attach__text', {}, [
-          el('span.attach__name', {}, 'GIF'),
-          el('span.attach__meta', {}, 'Tính năng đang phát triển'),
+          el('span.attach__name', {}, payload.fileName ?? 'Hình ảnh'),
+          el('span.attach__meta', {}, formatBytes(payload.size ?? 0)),
         ]),
-      ]),
+      ]);
+    },
   },
 
   /* ---------------------------------------------------------------------- */
   file: {
     label: 'Tệp tin',
-    enabled: false,
+    enabled: true,
     iconName: 'paperclip',
-    description: 'Gửi tệp tin: PDF, Office, ảnh.',
-    future: true,
-    validate: (payload) => typeof payload?.name === 'string',
-    render: (attachment) =>
-      el('div.attach.attach--file', {}, [
-        el('span.attach__icon', {}, icon('file')),
-        el('div.attach__text', {}, [
-          el('span.attach__name', {}, attachment.payload.name),
-          el('span.attach__meta', {}, formatBytes(attachment.payload.size ?? 0)),
-        ]),
-      ]),
-  },
+    description: 'Gửi tài liệu: PDF, Office, văn bản.',
+    accept: '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv',
+    validate: (payload) => typeof payload?.fileName === 'string' && typeof payload?.url === 'string',
 
-  /* ---------------------------------------------------------------------- */
-  call: {
-    label: 'Cuộc gọi',
-    enabled: false,
-    iconName: 'phone',
-    description: 'Gọi thoại và gọi video trong cuộc trò chuyện.',
-    future: true,
-    system: true,
-    validate: (payload) => typeof payload?.durationSec === 'number',
-    render: (attachment) =>
-      el('div.attach.attach--call', {}, [
-        el('span.attach__icon', {}, icon(attachment.payload.kind === 'video' ? 'video' : 'phone')),
-        el('div.attach__text', {}, [
-          el('span.attach__name', {}, attachment.payload.kind === 'video' ? 'Cuộc gọi video' : 'Cuộc gọi thoại'),
-          el('span.attach__meta', {}, `${attachment.payload.durationSec}s · Tính năng đang phát triển`),
-        ]),
-      ]),
+    render: (attachment) => {
+      const payload = attachment.payload ?? {};
+
+      return el(
+        'button.attach.attach--file',
+        {
+          type: 'button',
+          title: `Tải ${payload.fileName}`,
+          onclick: () => payload.onDownload?.(attachment),
+        },
+        [
+          el('span.attach__icon', {}, icon('file')),
+          el('div.attach__text', {}, [
+            el('span.attach__name', {}, payload.fileName ?? 'Tệp đính kèm'),
+            el('span.attach__meta', {}, formatBytes(payload.size ?? 0)),
+          ]),
+          el('span.attach__icon.attach__action', {}, icon('download')),
+        ]
+      );
+    },
   },
 };
 
-/** Ordered list of kinds the composer should expose. */
-export const COMPOSER_ORDER = ['emoji', 'image', 'voice', 'gif', 'file', 'phone', 'video'];
+/**
+ * Ordered list of composer tools.
+ *
+ * Voice notes, GIFs, and calls are deliberately absent rather than present and
+ * disabled. A button that says "coming soon" is a promise the app cannot keep,
+ * and it makes the ones that do work harder to find.
+ */
+export const COMPOSER_ORDER = ['emoji', 'image', 'file'];
 
 /** Composer tools, mapped to the kinds above. */
 export const COMPOSER_TOOLS = {
   emoji: { iconName: 'smile', label: 'Biểu tượng cảm xúc', kind: 'emoji', enabled: true },
-  image: { iconName: 'image', label: 'Gửi hình ảnh', kind: 'image', enabled: false },
-  voice: { iconName: 'mic', label: 'Gửi tin nhắn thoại', kind: 'voice', enabled: false },
-  gif: { iconName: 'gif', label: 'Gửi GIF', kind: 'gif', enabled: false },
-  file: { iconName: 'paperclip', label: 'Gửi tệp tin', kind: 'file', enabled: false },
-  phone: { iconName: 'phone', label: 'Gọi thoại', kind: 'call', enabled: false },
-  video: { iconName: 'video', label: 'Gọi video', kind: 'call', enabled: false },
+  image: { iconName: 'image', label: 'Gửi hình ảnh', kind: 'image', enabled: true },
+  file: { iconName: 'paperclip', label: 'Gửi tệp tin', kind: 'file', enabled: true },
 };
 
 /* -------------------------------------------------------------------------- */
@@ -165,34 +145,49 @@ export function textAttachment(text) {
   return { id: `att_${Math.random().toString(36).slice(2, 10)}`, kind: 'text', payload: { text } };
 }
 
-/** Build a stub attachment for any registered kind (used by the demo). */
-export function stubAttachment(kind, payload = {}) {
-  const entry = REGISTRY[kind];
-  if (!entry) throw new Error(`[chat/attachments] Unknown kind: ${kind}`);
-
+/**
+ * Build an attachment record from what the backend returned.
+ *
+ * The payload carries the display fields plus the hooks the renderers call, so
+ * a renderer never has to reach for the transport itself.
+ */
+export function fromServer(attachment, hooks = {}) {
   return {
-    id: `att_${Math.random().toString(36).slice(2, 10)}`,
-    kind,
-    payload: { ...payload, __stub: true },
+    id: attachment.id,
+    kind: attachment.kind === 'image' ? 'image' : 'file',
+    payload: {
+      url: attachment.url,
+      fileName: attachment.fileName,
+      mimeType: attachment.mimeType,
+      size: attachment.size,
+      objectUrl: null,
+      onDownload: hooks.onDownload,
+      onLoad: hooks.onLoad,
+    },
   };
 }
 
-/** Render a single attachment using its registered renderer. */
+/**
+ * Render a single attachment using its registered renderer.
+ *
+ * The fallback is deliberately neutral rather than a promise: a message saved
+ * by a newer client could carry a kind this one has never heard of, and
+ * saying "unsupported" is honest where "coming soon" would not be.
+ */
 export function renderAttachment(attachment) {
   const entry = REGISTRY[attachment.kind];
+
   if (!entry?.render) {
     return el('div.attach.attach--placeholder', { 'data-kind-label': attachment.kind }, [
       el('span.attach__icon', {}, icon('paperclip')),
       el('div.attach__text', {}, [
-        el('span.attach__name', {}, entry?.label ?? attachment.kind),
-        el('span.attach__meta', {}, 'Chưa hỗ trợ'),
+        el('span.attach__name', {}, attachment.payload?.fileName ?? entry?.label ?? 'Tệp đính kèm'),
+        el('span.attach__meta', {}, 'Loại tệp này chưa được hỗ trợ'),
       ]),
     ]);
   }
 
-  const node = entry.render(attachment);
-  if (attachment.payload?.__stub) node.classList.add('attach--placeholder');
-  return node;
+  return entry.render(attachment);
 }
 
 /** Render every attachment of a message. */
@@ -208,9 +203,6 @@ export function validateAttachments(attachments = []) {
     if (!entry) {
       return { ok: false, error: `Loại tệp chưa hỗ trợ: ${attachment.kind}` };
     }
-    if (!entry.enabled) {
-      return { ok: false, error: `${entry.label} đang được phát triển, chưa khả dụng.` };
-    }
     if (entry.validate && !entry.validate(attachment.payload)) {
       return { ok: false, error: `Dữ liệu ${entry.label.toLowerCase()} không hợp lệ.` };
     }
@@ -218,23 +210,35 @@ export function validateAttachments(attachments = []) {
   return { ok: true };
 }
 
-/** Capability summary, surfaced in the composer tooltip and README. */
+/**
+ * Composer tools that are actually usable.
+ *
+ * The emoji picker is a text tool, not an attachment kind, so it has no
+ * registry entry — it must not be counted as missing.
+ */
 export function capabilities() {
   return COMPOSER_ORDER.map((key) => {
     const tool = COMPOSER_TOOLS[key];
     const entry = REGISTRY[tool.kind];
+
     return {
       key,
       label: tool.label,
       iconName: tool.iconName,
       kind: tool.kind,
-      enabled: Boolean(tool.enabled && entry?.enabled),
+      enabled: Boolean(tool.enabled && (entry ? entry.enabled : true)),
       description: entry?.description ?? '',
     };
   });
 }
 
-/** Number of not-yet-implemented capabilities — shown as a UI hint. */
+/**
+ * How many tools are still not usable.
+ *
+ * The composer no longer lists this anywhere — with every remaining tool
+ * working, a "N features coming" line would be pure noise. It stays exported
+ * for the README and for tests that assert the registry stays honest.
+ */
 export const plannedCount = capabilities().filter((c) => !c.enabled).length;
 
 export { formatCompact };

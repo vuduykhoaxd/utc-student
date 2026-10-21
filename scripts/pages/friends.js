@@ -20,6 +20,7 @@ import { friends as friendsApi } from '../core/api.js';
 import { toast } from '../core/app-store.js';
 import { timeAgo, formatNumber } from '../utils/format.js';
 import { students } from '../data/seed.js';
+import * as realtime from '../api/realtime-client.js';
 
 /** @param {HTMLElement} outlet */
 export async function friendsPage(ctx) {
@@ -327,12 +328,13 @@ export async function friendsPage(ctx) {
                   const btn = event.currentTarget;
                   btn.classList.add('btn--loading');
                   try {
-                    const detail = await findFriendshipId(person.id);
-                    if (!detail) {
+                    // The list already carries the request id, so there is no
+                    // need to search for it again before accepting.
+                    if (!person.friendshipId) {
                       toast({ title: 'Không tìm thấy lời mời', variant: 'error' });
                       return;
                     }
-                    await friendsApi.accept({ friendshipId: detail });
+                    await friendsApi.accept({ friendshipId: person.friendshipId });
                     toast({ title: `Đã kết bạn với ${person.fullName}`, variant: 'success' });
                     await reload();
                   } catch (error) {
@@ -347,8 +349,9 @@ export async function friendsPage(ctx) {
                 size: 'sm',
                 iconName: 'close',
                 onclick: async () => {
-                  const detail = await findFriendshipId(person.id);
-                  if (detail) await friendsApi.decline({ friendshipId: detail });
+                  if (person.friendshipId) {
+                    await friendsApi.decline({ friendshipId: person.friendshipId });
+                  }
                   toast({ title: 'Đã từ chối lời mời', variant: 'info' });
                   await reload();
                 },
@@ -360,16 +363,6 @@ export async function friendsPage(ctx) {
             ]),
       ]
     );
-  }
-
-  /** Resolve a friendship id by searching the target student's relation. */
-  async function findFriendshipId(targetId) {
-    try {
-      const relation = await friendsApi.search({ studentId: state.incoming.find((p) => p.id === targetId)?.studentId });
-      return relation?.friendshipId ?? null;
-    } catch {
-      return null;
-    }
   }
 
   function drawAccepted() {
@@ -567,10 +560,34 @@ export async function friendsPage(ctx) {
   await reload();
   import('../utils/motion.js').then(({ enhance }) => enhance(view));
 
+  /**
+   * Live relationship changes.
+   *
+   * A request or an accept changes the lists, so the page reloads rather than
+   * patching its own state: the server's view of who is a friend of whom is
+   * the only one that stays correct as both sides act.
+   */
+  const unsubscribers = [
+    realtime.on(realtime.REALTIME_EVENTS.FRIEND_REQUEST, () => {
+      reload();
+      toast({ title: 'Bạn có lời mời kết bạn mới', variant: 'info' });
+    }),
+    realtime.on(realtime.REALTIME_EVENTS.FRIEND_ACCEPTED, () => reload()),
+    realtime.on(realtime.REALTIME_EVENTS.FRIEND_REMOVED, () => reload()),
+  ];
+
+  function teardown() {
+    for (const off of unsubscribers) off();
+    unsubscribers.length = 0;
+  }
+
   function bulletRow(text, iconName) {
     return el('div.row-2', { style: { alignItems: 'flex-start', fontSize: 'var(--text-xs)', color: 'var(--text-muted)' } }, [
       el('span', { style: { display: 'inline-flex', color: 'var(--success)', marginTop: '1px' } }, icon(iconName)),
       el('span', {}, text),
     ]);
   }
+
+  // The router calls this before the next navigation.
+  return teardown;
 }

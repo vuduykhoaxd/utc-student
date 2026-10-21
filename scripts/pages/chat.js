@@ -17,15 +17,15 @@ import { button, avatar, avatarStack, badge, emptyState, iconTile } from '../com
 import { searchInput } from '../components/forms.js';
 import { pageHeader } from '../components/page.js';
 import { chatApi } from '../core/api.js';
-import { toast } from '../core/app-store.js';
+import { toast, uiStore, refreshUnread } from '../core/app-store.js';
 import { dayLabel, formatTime, timeAgo, formatBytes } from '../utils/format.js';
 import {
   COMPOSER_TOOLS,
   COMPOSER_ORDER,
   renderAttachments,
   validateAttachments,
-  plannedCount,
 } from '../features/chat/attachmentRegistry.js';
+import * as realtime from '../api/realtime-client.js';
 
 /** @param {HTMLElement} outlet @param {{search: object}} ctx */
 export async function chatPage(ctx) {
@@ -37,7 +37,13 @@ export async function chatPage(ctx) {
     messages: [],
     query: '',
     view: 'list',
+    // Per-conversation drafts, so switching threads (or a live message
+    // arriving) never throws away what was being typed.
+    drafts: {},
   };
+
+  /** Mounted thread parts; see drawThread(). */
+  let threadParts = null;
 
   const listNode = el('div.chat__list');
   const threadNode = el('div.chat__thread');
@@ -49,7 +55,7 @@ export async function chatPage(ctx) {
       el('div.page__heading', {}, [
         el('span.page__eyebrow', {}, [icon('messages'), el('span', {}, 'Cộng đồng')]),
         el('h1.page-title', {}, 'Tin nhắn'),
-        el('p.body-text', {}, 'Trò chuyện cá nhân và nhóm. Hiện hỗ trợ tin nhắn văn bản — kiến trúc sẵn sàng cho hình ảnh, tin thoại, GIF và gọi thoại.'),
+        el('p.body-text', {}, 'Trò chuyện cá nhân và nhóm. Gửi tin nhắn, hình ảnh và tài liệu — tất cả cập nhật ngay khi người nhận mở trang.'),
       ]),
       el('div.page__actions', {}, [
         button({
@@ -64,10 +70,120 @@ export async function chatPage(ctx) {
 
   render(outlet, view);
 
+  /* ================= Realtime ================= */
+
+  /**
+   * Live updates from the server.
+   *
+   * Every handler is written to be idempotent: an event that arrives for a
+   * conversation the user is not viewing updates only the list, and one for the
+   * open conversation appends the message. A duplicated delivery (a reconnect
+   * replay, say) is filtered by id rather than assumed impossible.
+   */
+  const unsubscribers = [
+    realtime.on(realtime.REALTIME_EVENTS.CHAT_MESSAGE, async (message) => {
+      if (!message?.conversationId) return;
+
+      const isOpen = state.activeId === message.conversationId;
+
+      if (isOpen) {
+        // Idempotent: a reconnect can replay the last delivery.
+        if (state.messages.some((m) => m.id === message.id)) return;
+
+        state.messages.push(message);
+        // `drawThread` decides whether to stick to the bottom from the scroll
+        // position that was current *before* the repaint. Scrolling here first
+        // would always force the reader back down, even when scrolling history.
+        drawThread(currentConversation());
+
+        // Someone else's message: clear it here rather than waiting for the
+        // peer to notice, so the badge does not linger on an open thread.
+        if (!message.isOwn) {
+          chatApi.markRead(message.conversationId)
+            .then(() => refreshUnread())
+            .catch(() => {});
+        }
+      }
+
+      /**
+       * Refresh the list for the preview and the unread badge.
+       *
+       * `keepThread` stops this from reloading `state.messages` — the open
+       * thread was just updated in place, and letting it pick the first
+       * conversation would leave the user reading another one's history.
+       */
+      await loadConversations({ keepThread: true });
+    }),
+
+    /**
+     * The socket came back after an outage.
+     *
+     * Anything sent while it was down was never pushed, so the open thread is
+     * refetched. This is what makes a dropped connection invisible to the user
+     * instead of leaving a silent gap in their conversation.
+     */
+    realtime.on(realtime.RECONNECTED, async () => {
+      await loadConversations();
+      if (state.activeId) {
+        await chatApi.markRead(state.activeId).catch(() => {});
+      }
+    }),
+
+    realtime.on(realtime.REALTIME_EVENTS.CHAT_TYPING, ({ conversationId, typing }) => {
+      if (conversationId !== state.activeId || !state.activeId) return;
+      state.typing = typing ? conversationId : null;
+      drawThread(currentConversation());
+    }),
+
+    realtime.on(realtime.REALTIME_EVENTS.CHAT_READ, ({ conversationId, ids }) => {
+      if (conversationId !== state.activeId || !state.activeId) return;
+      const read = new Set(ids ?? []);
+      state.messages = state.messages.map((m) => (read.has(m.id) ? { ...m, status: 'read' } : m));
+      drawThread(currentConversation());
+    }),
+
+    realtime.on(realtime.REALTIME_EVENTS.CHAT_CONVERSATION, async ({ conversation }) => {
+      if (!conversation) return;
+      if (state.conversations.some((c) => c.id === conversation.id)) return;
+      await loadConversations();
+    }),
+  ];
+
+  /** The conversation currently open, or null when only the list is shown. */
+  function currentConversation() {
+    if (!state.activeId) return null;
+    return state.conversations.find((c) => c.id === state.activeId) ?? null;
+  }
+
+  /** Detach every listener when the page is replaced. */
+  function teardown() {
+    for (const off of unsubscribers) off();
+    unsubscribers.length = 0;
+    // Leaving the page means no thread is on screen, so a new message must
+    // notify again.
+    uiStore.setState({ activeConversationId: null });
+  }
+
   /* ================= Conversation list ================= */
 
-  async function loadConversations() {
+  /**
+   * Refresh the conversation list.
+   *
+   * `keepThread` matters: a realtime update for a conversation the user is not
+   * looking at must refresh only the list. Without it this would pick the first
+   * conversation, load *its* messages into `state.messages`, and leave the open
+   * thread showing another conversation's history.
+   */
+  async function loadConversations({ keepThread = false } = {}) {
     state.conversations = await chatApi.list();
+
+    // Notification links carry the conversation id (`?c=`), which is stable
+    // even though the notice was written by another account.
+    const targetConversationId = ctx.search?.c;
+    if (targetConversationId && state.conversations.some((c) => c.id === targetConversationId)) {
+      state.activeId = targetConversationId;
+      state.view = 'thread';
+    }
 
     // Honour ?to=MSV from the friends page
     const targetId = ctx.search?.to;
@@ -88,22 +204,35 @@ export async function chatPage(ctx) {
     }
 
     drawList();
+
+    if (keepThread) return;
     if (state.activeId) await loadMessages();
     else drawThreadEmpty();
   }
+
+  /**
+   * Created once, outside drawList().
+   *
+   * Rebuilding the field on every repaint (a live message triggers one) put
+   * the caret back at the start after each keystroke, so a query could never
+   * be typed. The list head and body are still rebuilt, but the input itself
+   * stays mounted.
+   */
+  const listSearch = searchInput({
+    placeholder: 'Tìm cuộc trò chuyện…',
+    onInput: (value) => {
+      state.query = value.toLowerCase();
+      drawList();
+    },
+  });
+  const listSearchSlot = el('div.chat__list-search', {}, listSearch.node);
+  const listBody = el('div.chat__list-body');
+  let listHead = null;
 
   function drawList() {
     const groups = { direct: [], group: [] };
     state.conversations.forEach((conversation) => {
       groups[conversation.type].push(conversation);
-    });
-
-    const search = searchInput({
-      placeholder: 'Tìm cuộc trò chuyện…',
-      onInput: (value) => {
-        state.query = value.toLowerCase();
-        drawList();
-      },
     });
 
     const head = el('header.chat__list-head', {}, [
@@ -119,7 +248,14 @@ export async function chatPage(ctx) {
       }, icon('plus')),
     ]);
 
-    const body = el('div.chat__list-body');
+    if (!listHead) {
+      render(listNode, head, listSearchSlot, listBody);
+    } else {
+      listHead.replaceWith(head);
+    }
+    listHead = head;
+
+    listBody.replaceChildren();
 
     const filter = (items) =>
       state.query
@@ -130,7 +266,7 @@ export async function chatPage(ctx) {
     const group = filter(groups.group);
 
     if (!direct.length && !group.length) {
-      body.appendChild(
+      listBody.appendChild(
         emptyState({
           iconName: 'messages',
           title: state.query ? 'Không tìm thấy cuộc trò chuyện' : 'Chưa có cuộc trò chuyện',
@@ -151,16 +287,14 @@ export async function chatPage(ctx) {
     }
 
     if (direct.length) {
-      body.appendChild(el('p.chat__section-label', {}, 'Trò chuyện'));
-      direct.forEach((conversation) => body.appendChild(conversationRow(conversation)));
+      listBody.appendChild(el('p.chat__section-label', {}, 'Trò chuyện'));
+      direct.forEach((conversation) => listBody.appendChild(conversationRow(conversation)));
     }
 
     if (group.length) {
-      body.appendChild(el('p.chat__section-label', {}, 'Nhóm'));
-      group.forEach((conversation) => body.appendChild(conversationRow(conversation)));
+      listBody.appendChild(el('p.chat__section-label', {}, 'Nhóm'));
+      group.forEach((conversation) => listBody.appendChild(conversationRow(conversation)));
     }
-
-    render(listNode, head, el('div.chat__list-search', {}, search.node), body);
   }
 
   function conversationRow(conversation) {
@@ -207,6 +341,7 @@ export async function chatPage(ctx) {
   function backToList() {
     state.view = 'list';
     layout.dataset.view = 'list';
+    uiStore.setState({ activeConversationId: null });
   }
 
   /* ================= Thread ================= */
@@ -227,13 +362,53 @@ export async function chatPage(ctx) {
       toast({ title: 'Không tải được tin nhắn', message: error.message, variant: 'error' });
     }
 
+    // Reading a thread clears its notices on the server; pull the new two
+    // counters so the bell and the sidebar agree immediately.
+    uiStore.setState({ activeConversationId: state.activeId });
+    refreshUnread();
+
     drawThread(conversation);
   }
 
+  /**
+   * Render the open thread.
+   *
+   * Header, message stream and composer are separate parts: a live message or
+   * a read receipt only repaints the stream, so whatever is being typed
+   * survives. Only switching conversation rebuilds the composer, and it is
+   * rebuilt from that conversation's saved draft.
+   */
   function drawThread(conversation) {
+    if (!conversation) return drawThreadEmpty();
+
+    if (!threadParts || threadParts.conversationId !== conversation.id) {
+      threadParts = {
+        conversationId: conversation.id,
+        head: threadHeader(conversation),
+        stream: el('div.chat__messages', { id: 'chat-stream' }),
+        composer: composerNode(conversation),
+      };
+      render(threadNode, threadParts.head, threadParts.stream, threadParts.composer);
+      renderMessages(conversation, { stick: true });
+      return;
+    }
+
     const head = threadHeader(conversation);
-    const stream = el('div.chat__messages', { id: 'chat-stream' });
-    const composer = composerNode(conversation);
+    threadParts.head.replaceWith(head);
+    threadParts.head = head;
+
+    renderMessages(conversation, { stick: isNearBottom(threadParts.stream) });
+  }
+
+  /** True when the reader is following the conversation, not reading back. */
+  function isNearBottom(node) {
+    return node.scrollHeight - node.scrollTop - node.clientHeight < 120;
+  }
+
+  /** Repaint only the messages; the composer above stays mounted. */
+  function renderMessages(conversation, { stick = true } = {}) {
+    const stream = threadParts.stream;
+    stream.replaceChildren();
 
     if (!state.messages.length) {
       stream.appendChild(
@@ -245,6 +420,7 @@ export async function chatPage(ctx) {
             : 'Hãy gửi lời chào đầu tiên của bạn.',
         })
       );
+      return;
     }
 
     let lastSenderId = null;
@@ -265,8 +441,16 @@ export async function chatPage(ctx) {
       stream.appendChild(messageNode(message, conversation, tight, index));
     });
 
-    render(threadNode, head, stream, composer);
-    scrollToBottom(stream);
+    /**
+     * A live message repaints the whole stream, so the rows must appear at once.
+     * Leaving them to the reveal observer would blank every bubble (or replay
+     * the whole stagger) on each incoming message — the thread visibly reloads.
+     */
+    stream.querySelectorAll('[data-reveal]:not(.is-revealed)').forEach((node) => {
+      node.classList.add('is-revealed');
+    });
+
+    if (stick) scrollToBottom(stream);
   }
 
   function dayBucket(timestamp) {
@@ -296,7 +480,7 @@ export async function chatPage(ctx) {
       renderAttachments(message.attachments ?? []),
     ].filter(Boolean);
 
-    return el(
+    const node = el(
       'div',
       {
         class: [
@@ -328,6 +512,34 @@ export async function chatPage(ctx) {
         ]),
       ]
     );
+
+    /**
+     * Resolve image bytes after the row is on screen.
+     *
+     * The row renders immediately with the name and size; the picture arrives
+     * once its blob has been fetched. Doing it the other way round would block
+     * the whole thread on one slow image.
+     */
+    for (const attachment of message.attachments ?? []) {
+      if (attachment.kind !== 'image' || attachment.payload?.objectUrl) continue;
+      hydrateAttachment(attachment, node);
+    }
+
+    return node;
+  }
+
+  /** Fetch an image's bytes and paint it into an already-rendered row. */
+  async function hydrateAttachment(attachment, node) {
+    await chatApi.ensureAttachment(attachment);
+
+    const src = attachment.payload?.objectUrl;
+    if (!src) return;
+
+    const img = node.querySelector(`.attach--image [data-attachment="${attachment.id}"]`);
+    if (!img) return;
+
+    img.src = src;
+    img.style.opacity = '';
   }
 
   function threadHeader(conversation) {
@@ -444,6 +656,9 @@ export async function chatPage(ctx) {
   /* ================= Composer ================= */
 
   function composerNode(conversation) {
+    const draft = state.drafts[conversation.id]
+      ?? (state.drafts[conversation.id] = { text: '', staged: [] });
+
     const input = el('textarea.composer__input', {
       name: 'message-body',
       placeholder: conversation.type === 'group'
@@ -453,13 +668,17 @@ export async function chatPage(ctx) {
       'aria-label': 'Nội dung tin nhắn',
       maxlength: '4000',
     });
+    input.value = draft.text ?? '';
 
     // Auto-grow
     const resize = () => {
       input.style.height = 'auto';
       input.style.height = `${Math.min(input.scrollHeight, 128)}px`;
     };
-    input.addEventListener('input', resize);
+    input.addEventListener('input', () => {
+      draft.text = input.value;
+      resize();
+    });
 
     const sendBtn = el(
       'button.composer__send',
@@ -488,16 +707,35 @@ export async function chatPage(ctx) {
 
     async function send() {
       const text = input.value.trim();
-      if (!text) return;
+      const staged = draft.staged;
+
+      if (!text && !staged.length) return;
 
       sendBtn.disabled = true;
 
       try {
-        const message = await chatApi.send(conversation.id, { text, attachments: [] });
-        state.messages.push(message);
+        // Files are uploaded first, then the message references the ids it
+        // gets back. Sending them together would mean a failed upload leaving
+        // a message that references nothing.
+        const uploaded = [];
+        for (const item of staged) {
+          const saved = await chatApi.uploadAttachment(conversation.id, item.file);
+          uploaded.push(toAttachment(saved));
+        }
+
+        const message = await chatApi.send(conversation.id, { text, attachments: uploaded });
+        // The socket event can beat the HTTP response; appending blindly would
+        // then show the same bubble twice.
+        if (!state.messages.some((m) => m.id === message.id)) state.messages.push(message);
+        draft.text = '';
+        draft.staged = [];
+        pendingSlot.replaceChildren();
+
         await refreshConversationMeta(conversation.id);
         drawThread(conversation);
+
         input.value = '';
+        syncSendButton();
         requestAnimationFrame(() => {
           const stream = threadNode.querySelector('.chat__messages');
           stream?.scrollTo({ top: stream.scrollHeight, behavior: 'smooth' });
@@ -508,35 +746,105 @@ export async function chatPage(ctx) {
       }
     }
 
+    /** Enable send only when there is something to send. */
+    function syncSendButton() {
+      const has = input.value.trim() || draft.staged.length;
+      sendBtn.disabled = !has;
+    }
+
+    /** Build a registry attachment from a server response. */
+    function toAttachment(saved) {
+      return {
+        id: saved.id,
+        kind: saved.kind === 'image' ? 'image' : 'file',
+        payload: {
+          url: saved.url,
+          fileName: saved.fileName,
+          mimeType: saved.mimeType,
+          size: saved.size,
+        },
+      };
+    }
+
+    /* --- Staged files, shown above the input --- */
+    const pendingSlot = el('div.composer__pending');
+
+    function drawPending() {
+      const staged = draft.staged;
+      if (!staged.length) {
+        pendingSlot.replaceChildren();
+        return;
+      }
+
+      pendingSlot.replaceChildren(
+        ...staged.map((item, index) =>
+          el('span.composer__chip', {}, [
+            icon(item.file.type?.startsWith('image/') ? 'image' : 'file'),
+            el('span', {}, item.file.name),
+            el('button.composer__chip-x', {
+              type: 'button',
+              'aria-label': `Bỏ ${item.file.name}`,
+              onclick: () => {
+                draft.staged.splice(index, 1);
+                drawPending();
+                syncSendButton();
+              },
+            }, icon('close')),
+          ])
+        )
+      );
+    }
+
+    /** Open the picker and stage whatever comes back. */
+    function pickFiles(kind, accept) {
+      const picker = el('input', { type: 'file', accept, style: { display: 'none' } });
+
+      picker.onchange = async () => {
+        const files = [...(picker.files ?? [])];
+        picker.remove();
+        if (!files.length) return;
+
+        // 6 is what the server keeps per message; staging more would silently
+        // drop the extras.
+        draft.staged = [...draft.staged, ...files].slice(0, 6);
+        drawPending();
+        syncSendButton();
+      };
+
+      document.body.append(picker);
+      picker.click();
+    }
+
     /* --- Attachment toolbar, driven entirely by the registry --- */
     const tools = el('div.composer__tools', {}, COMPOSER_ORDER.map((key) => {
       const tool = COMPOSER_TOOLS[key];
-      const enabled = tool.enabled;
+
+      const onClick = {
+        image: () => pickFiles('image', 'image/png,image/jpeg,image/webp,image/gif'),
+        file: () => pickFiles('file', '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv'),
+        emoji: () => insertEmoji(input),
+      }[key];
 
       return el(
         'button.composer__tool',
         {
           type: 'button',
-          class: enabled ? '' : 'composer__tool--soon',
           'aria-label': tool.label,
-          title: enabled
-            ? tool.label
-            : `${tool.label} — tính năng đang phát triển`,
-          onclick: () => {
-            if (enabled) toast({ title: tool.label, message: 'Chức năng sẽ có trong phiên bản tiếp theo.', variant: 'info' });
-            else
-              toast({
-                title: `${tool.label} đang được phát triển`,
-                message: 'Kiến trúc đã sẵn sàng — chỉ cần bật cờ `enabled` trong attachmentRegistry.js.',
-                variant: 'warn',
-              });
-          },
+          title: tool.label,
+          onclick: onClick,
         },
         icon(tool.iconName)
       );
     }));
 
+    drawPending();
+    requestAnimationFrame(() => {
+      resize();
+      syncSendButton();
+    });
+
     return el('div.composer', {}, [
+      pendingSlot,
       el('div.composer__box', {}, [tools, input, sendBtn]),
       el('div.composer__footer', {}, [
         el('span.composer__hint', {}, [
@@ -547,11 +855,23 @@ export async function chatPage(ctx) {
           el('kbd', {}, 'Enter'),
           ' để xuống dòng',
         ]),
-        el('span', {}, [
-          `${plannedCount} loại tệp đang được phát triển: hình ảnh, tin thoại, GIF, tệp, gọi`,
-        ]),
       ]),
     ]);
+  }
+
+  /** Insert an emoji at the caret, not at the end. */
+  function insertEmoji(field) {
+    const EMOJI = ['😀', '😂', '😅', '😊', '😍', '🤔', '👍', '🙏', '🎉', '❤️'];
+    const chosen = EMOJI[Math.floor(Math.random() * EMOJI.length)];
+
+    const start = field.selectionStart ?? field.value.length;
+    const end = field.selectionEnd ?? field.value.length;
+
+    field.value = field.value.slice(0, start) + chosen + field.value.slice(end);
+    field.focus();
+    field.setSelectionRange(start + chosen.length, start + chosen.length);
+
+    field.dispatchEvent(new Event('input', { bubbles: true }));
   }
 
   async function refreshConversationMeta(conversationId) {
@@ -566,12 +886,14 @@ export async function chatPage(ctx) {
   /* ================= Helpers ================= */
 
   function scrollToBottom(stream) {
+    if (!stream) return;
     requestAnimationFrame(() => {
       stream.scrollTop = stream.scrollHeight;
     });
   }
 
   function drawThreadEmpty() {
+    threadParts = null;
     render(threadNode, 
       el('div.chat__head', {}, [
         el('div.chat__head-info', {}, [el('span.chat__head-name', {}, 'Chọn một cuộc trò chuyện')]),
@@ -733,4 +1055,9 @@ export async function chatPage(ctx) {
       })
     );
   }
+
+  // The router calls this before rendering the next page. Without it, every
+  // visit would leave a live subscription behind that keeps re-rendering a
+  // detached node.
+  return teardown;
 }

@@ -178,7 +178,12 @@ export function createSidebar({ onNavigate, onUserClick } = {}) {
   const syncMobile = (state) => {
     const open = state.mobileNavOpen;
     backdrop.hidden = !open;
-    if (open) document.body.appendChild(backdrop);
+    // Keep the scrim inside `.app`: the sidebar is a child of it, and `.app`
+    // creates a stacking context (z-index: 1). A body-level scrim would paint
+    // above that context — dimming and blurring the drawer itself and eating
+    // every click meant for a nav item.
+    const host = document.querySelector('.app') ?? document.body;
+    if (open) host.appendChild(backdrop);
     else backdrop.remove();
   };
 

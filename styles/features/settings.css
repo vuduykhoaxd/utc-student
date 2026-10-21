@@ -259,3 +259,91 @@ kbd {
     margin-left: var(--space-3);
   }
 }
+/* ==========================================================================
+   CHANGE PASSWORD
+   ========================================================================== */
+
+/* The row is a button, so it needs button resets on top of .setting */
+.setting--button {
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  border: 1px solid var(--surface-border);
+  transition:
+    background-color var(--dur-base) var(--ease-out),
+    border-color var(--dur-base) var(--ease-out);
+}
+
+.setting--button:hover {
+  background-color: var(--surface-2);
+  border-color: var(--surface-border-strong);
+}
+
+.setting--button .setting__go {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  color: var(--text-faint);
+  transition: transform var(--dur-base) var(--ease-out);
+}
+
+.setting--button .setting__go svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+.setting--button:hover .setting__go {
+  color: var(--primary);
+  transform: translateX(3px);
+}
+
+/* ---------- Strength meter ---------- */
+
+.pass-strength {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: calc(var(--space-2) * -1);
+}
+
+.pass-strength__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.pass-strength__label {
+  font-size: var(--text-2xs);
+  font-weight: 700;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+}
+
+.pass-strength__label--danger  { color: var(--danger); }
+.pass-strength__label--warning { color: var(--signal-500); }
+.pass-strength__label--primary { color: var(--primary); }
+.pass-strength__label--success { color: var(--success-500); }
+
+.pass-strength__track {
+  height: 4px;
+  border-radius: var(--radius-pill);
+  background-color: var(--surface-3);
+  overflow: hidden;
+}
+
+.pass-strength__fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  /* Width is the one place a transition is genuinely layout-driven, but it
+     runs on a 4px bar and never during scroll, so it is left as-is. */
+  transition:
+    width var(--dur-base) var(--ease-out),
+    background-color var(--dur-base) var(--ease-out);
+}
+
+.pass-strength__fill--danger  { background-color: var(--danger); }
+.pass-strength__fill--warning { background-color: var(--signal-500); }
+.pass-strength__fill--primary { background-color: var(--primary); }
+.pass-strength__fill--success { background-color: var(--success-500); }

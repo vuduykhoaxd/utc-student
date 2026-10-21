@@ -23,6 +23,7 @@ import { authStore, toast } from '../core/app-store.js';
 import { formatCompact, formatNumber, timeAgo } from '../utils/format.js';
 import { confirmDialog } from '../components/overlay.js';
 import { students } from '../data/seed.js';
+import * as realtime from '../api/realtime-client.js';
 
 const COLOR_NAMES = ['brand', 'violet', 'accent', 'signal', 'success', 'danger'];
 
@@ -41,7 +42,7 @@ export async function postsPage(ctx) {
     name: 'post-body',
     placeholder: `Chuyện gì đang bận tâm, ${me?.fullName.split(' ').slice(-1)[0] ?? ''}?`,
     rows: 3,
-    maxlength: '5000',
+    maxlength: '3000',
     'aria-label': 'Nội dung bài viết',
   });
 
@@ -49,7 +50,7 @@ export async function postsPage(ctx) {
 
   composerInput.addEventListener('input', () => {
     const length = composerInput.value.length;
-    charCount.textContent = length ? `${formatNumber(length)}/5000` : '';
+    charCount.textContent = length ? `${formatNumber(length)}/3000` : '';
     publishBtn.disabled = composerInput.value.trim().length === 0;
   });
 
@@ -130,6 +131,57 @@ export async function postsPage(ctx) {
   });
 
   /* ---------- Feed ---------- */
+
+  /**
+   * Live feed updates.
+   *
+   * A post can arrive three ways — created, updated (someone reacted), or
+   * commented — so all three are handled as "replace or insert by id". That
+   * keeps the feed consistent without refetching, and makes a duplicate event
+   * harmless.
+   */
+  const unsubscribers = [
+    realtime.on(realtime.REALTIME_EVENTS.POST_CREATED, (post) => {
+      if (!post || state.posts.some((p) => p.id === post.id)) return;
+      if (state.scope === 'friends' && !state.friendIds?.includes(post.authorId)) return;
+
+      state.posts.unshift(post);
+      drawFeed();
+      drawRail();
+    }),
+
+    realtime.on(realtime.REALTIME_EVENTS.POST_UPDATED, (post) => {
+      if (!post) return;
+      const index = state.posts.findIndex((p) => p.id === post.id);
+      if (index === -1) return;
+
+      state.posts[index] = post;
+      drawFeed();
+    }),
+
+    realtime.on(realtime.REALTIME_EVENTS.COMMENT_ADDED, ({ postId, comment }) => {
+      const post = state.posts.find((p) => p.id === postId);
+      if (!post || !comment) return;
+      if (post.comments.some((c) => c.id === comment.id)) return;
+
+      post.comments = [...(post.comments ?? []), comment];
+      post.commentCount = post.comments.length;
+      drawFeed();
+    }),
+
+    realtime.on(realtime.REALTIME_EVENTS.POST_REMOVED, ({ postId }) => {
+      if (!state.posts.some((p) => p.id === postId)) return;
+      state.posts = state.posts.filter((p) => p.id !== postId);
+      drawFeed();
+      drawRail();
+    }),
+  ];
+
+  function teardown() {
+    for (const off of unsubscribers) off();
+    unsubscribers.length = 0;
+  }
+
   async function load() {
     try {
       state.posts = await postsApi.list({ scope: state.scope, limit: 40 });
@@ -560,4 +612,8 @@ export async function postsPage(ctx) {
   render(outlet, view);
   await load();
   import('../utils/motion.js').then(({ enhance }) => enhance(view));
+
+  // The router calls this before the next navigation, so the feed does not
+  // keep re-rendering after the user has moved on.
+  return teardown;
 }

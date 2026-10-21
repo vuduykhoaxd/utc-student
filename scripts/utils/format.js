@@ -177,12 +177,18 @@ export function formatBytes(bytes) {
   return `${value.toFixed(index === 0 ? 0 : 1).replace('.', ',')} ${units[index]}`;
 }
 
-/** First letters of a full name, max 2 characters. */
+/**
+ * Initials for an avatar, max 2 characters.
+ *
+ * Vietnamese names are written family-first ("Nguyễn Văn An"), so the pair is the
+ * first and last word — "NA". Taking the last two words instead yields "VA",
+ * which reads as the given name and is the wrong half of the name.
+ */
 export function initials(name = '') {
   const parts = String(name).trim().split(/\s+/).filter(Boolean);
   if (!parts.length) return '?';
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return (parts[parts.length - 2][0] + parts[parts.length - 1][0]).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
 /** Strip Vietnamese diacritics for accent-insensitive search. */
@@ -226,6 +232,18 @@ function toDate(value) {
   if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
   if (typeof value === 'number') return new Date(value);
   if (typeof value === 'string') {
+    /**
+     * The UTC portal returns birthdays as "18/09/2008". `new Date()` only
+     * reliably accepts ISO, and silently yields Invalid Date for this shape in
+     * Chrome — which surfaces as a blank field with no error anywhere. Rewrite
+     * it to ISO before parsing.
+     */
+    const dayFirst = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(value.trim());
+    if (dayFirst) {
+      const [, d, m, y] = dayFirst;
+      return new Date(Number(y), Number(m) - 1, Number(d));
+    }
+
     const parsed = new Date(value);
     return Number.isNaN(parsed.getTime()) ? null : parsed;
   }

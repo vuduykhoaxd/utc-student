@@ -128,6 +128,18 @@ function closeRouteWipe() {
 
   app.classList.toggle('is-collapsed', uiStore.getState().sidebarCollapsed);
 
+  // A drawer opened on a phone stays open when the window grows, and its
+  // full-viewport backdrop then swallows every click on the desktop layout.
+  // Close it as soon as the drawer breakpoint is crossed.
+  document.body.style.overflow = uiStore.getState().mobileNavOpen ? 'hidden' : '';
+
+  const desktop = window.matchMedia('(min-width: 1025px)');
+  desktop.addEventListener('change', (event) => {
+    if (event.matches && uiStore.getState().mobileNavOpen) {
+      uiStore.setState({ mobileNavOpen: false });
+    }
+  });
+
   /* ---------- Global interactions ---------- */
   attachRipple(document.body);
 

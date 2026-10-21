@@ -1,9 +1,9 @@
 /**
  * Settings
  *
- * Exposes the preferences that live in `core/preferences.js` plus the two
- * destructive actions that need a confirmation step: resetting the demo
- * dataset and signing out everywhere.
+ * Exposes the preferences that live in `core/preferences.js`, the real
+ * change-password flow against the UTC backend, and the destructive demo-data
+ * reset.
  *
  * Every control writes straight through to the store and persists; there is
  * no "Save" button because there is nothing to batch.
@@ -13,8 +13,10 @@ import { el, render } from '../utils/dom.js';
 import { icon } from '../components/icons.js';
 import { badge, button, notice, panel } from '../components/ui.js';
 import { pageHeader } from '../components/page.js';
-import { confirmDialog } from '../components/overlay.js';
+import { confirmDialog, modal } from '../components/overlay.js';
+import { textInput } from '../components/forms.js';
 import { authStore, toast, uiStore, toggleTheme } from '../core/app-store.js';
+import { auth } from '../core/api.js';
 import {
   getPrefs,
   resetPrefs,
@@ -89,6 +91,198 @@ function infoRow(label, value, mono = false) {
     el('div.setting__head', {}, el('div.setting__text', {}, el('span.setting__title', {}, label))),
     el('span', { class: mono ? 'setting__value setting__value--mono' : 'setting__value' }, value),
   ]);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Change password                                                            */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Server-side rules are not knowable from the browser, so this only enforces
+ * what we can check locally. Anything else is left to the API and surfaced as
+ * its own error — inventing rules here would reject passwords the portal
+ * actually accepts.
+ */
+const PASSWORD_MIN = 8;
+
+/** Open the change-password dialog. */
+function openChangePassword() {
+  const oldField = textInput({
+    name: 'old-password',
+    label: 'Mật khẩu hiện tại',
+    type: 'password',
+    required: true,
+    autocomplete: 'current-password',
+    placeholder: 'Nhập mật khẩu đang dùng',
+  });
+
+  const newField = textInput({
+    name: 'new-password',
+    label: 'Mật khẩu mới',
+    type: 'password',
+    required: true,
+    autocomplete: 'new-password',
+    placeholder: `Ít nhất ${PASSWORD_MIN} ký tự`,
+  });
+
+  const retypeField = textInput({
+    name: 'retype-password',
+    label: 'Nhập lại mật khẩu mới',
+    type: 'password',
+    required: true,
+    autocomplete: 'new-password',
+    placeholder: 'Gõ lại mật khẩu mới',
+  });
+
+  const alertNode = el('div.auth__alert', { hidden: true, role: 'alert' });
+  const strengthRow = el('div.pass-strength', { hidden: true });
+
+  /** Mirror of the password rules, updated as the user types. */
+  const renderStrength = () => {
+    const value = newField.input.value;
+    if (!value) {
+      strengthRow.hidden = true;
+      return;
+    }
+
+    // A rough composition estimate — deliberately not a real entropy meter.
+    let score = 0;
+    if (value.length >= PASSWORD_MIN) score += 1;
+    if (value.length >= 12) score += 1;
+    if (/[a-z]/.test(value) && /[A-Z]/.test(value)) score += 1;
+    if (/\d/.test(value)) score += 1;
+    if (/[^\w\s]/.test(value)) score += 1;
+
+    const levels = [
+      { label: 'Rất yếu', tone: 'danger', width: '12%' },
+      { label: 'Yếu', tone: 'danger', width: '28%' },
+      { label: 'Trung bình', tone: 'warning', width: '52%' },
+      { label: 'Khá', tone: 'primary', width: '76%' },
+      { label: 'Mạnh', tone: 'success', width: '100%' },
+    ];
+    const level = levels[Math.min(score, levels.length - 1)];
+
+    render(
+      strengthRow,
+      el('div.pass-strength__head', {}, [
+        el('span.caption', {}, 'Độ mạnh'),
+        el('span', { class: `pass-strength__label pass-strength__label--${level.tone}` }, level.label),
+      ]),
+      el('div.pass-strength__track', {}, [
+        el('span.pass-strength__fill', {
+          class: `pass-strength__fill--${level.tone}`,
+          style: { width: level.width },
+        }),
+      ])
+    );
+    strengthRow.hidden = false;
+  };
+
+  newField.input.addEventListener('input', renderStrength);
+
+  const submitButton = button({
+    label: 'Đổi mật khẩu',
+    variant: 'primary',
+    iconName: 'key',
+  });
+
+  const validate = () => {
+    const oldPass = oldField.input.value;
+    const newPass = newField.input.value;
+    const retype = retypeField.input.value;
+
+    oldField.clearError?.();
+    newField.clearError?.();
+    retypeField.clearError?.();
+
+    if (!oldPass) {
+      oldField.setError?.('Vui lòng nhập mật khẩu hiện tại.');
+      return null;
+    }
+    if (!newPass) {
+      newField.setError?.('Vui lòng nhập mật khẩu mới.');
+      return null;
+    }
+    if (newPass.length < PASSWORD_MIN) {
+      newField.setError?.(`Mật khẩu mới cần ít nhất ${PASSWORD_MIN} ký tự.`);
+      return null;
+    }
+    if (newPass === oldPass) {
+      newField.setError?.('Mật khẩu mới phải khác mật khẩu hiện tại.');
+      return null;
+    }
+    if (newPass !== retype) {
+      retypeField.setError?.('Hai mật khẩu không khớp.');
+      return null;
+    }
+
+    return { oldPassword: oldPass, newPassword: newPass, retypePassword: retype };
+  };
+
+  const showAlert = (message) => {
+    render(
+      alertNode,
+      el('span', { style: { display: 'inline-flex', flexShrink: 0, marginTop: '1px' } }, icon('alert')),
+      el('span', {}, message)
+    );
+    alertNode.hidden = false;
+  };
+
+  const dialog = modal({
+    title: 'Đổi mật khẩu',
+    size: 'sm',
+    body: [
+      el('p.body-text', { style: { marginBottom: 'var(--space-4)' } },
+        'Sau khi đổi, hãy dùng mật khẩu mới ở lần đăng nhập sau.'),
+      alertNode,
+      el('div.stack-4', {}, [oldField.node, newField.node, strengthRow, retypeField.node]),
+    ],
+    footer: [
+      button({ label: 'Huỷ', variant: 'ghost', onclick: () => dialog.close('cancel') }),
+      submitButton,
+    ],
+  });
+
+  submitButton.addEventListener('click', async () => {
+    alertNode.hidden = true;
+
+    const payload = validate();
+    if (!payload) {
+      dialog.panel.classList.add('shake');
+      setTimeout(() => dialog.panel.classList.remove('shake'), 400);
+      return;
+    }
+
+    submitButton.classList.add('is-loading');
+    submitButton.disabled = true;
+
+    const result = await auth.changePassword(payload);
+
+    submitButton.classList.remove('is-loading');
+    submitButton.disabled = false;
+
+    if (result.fail) {
+      showAlert(result.error ?? 'Không đổi được mật khẩu.');
+      return;
+    }
+
+    toast({
+      title: 'Đổi mật khẩu thành công',
+      message: result.message ?? 'Hãy dùng mật khẩu mới ở lần đăng nhập sau.',
+      variant: 'success',
+    });
+    dialog.close('ok');
+  });
+
+  // Enter anywhere in the form submits.
+  dialog.panel.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      submitButton.click();
+    }
+  });
+
+  return dialog;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -235,9 +429,9 @@ export function settingsPage(ctx) {
         ]),
       }),
 
-      /* ---------- Account & data ---------- */
+      /* ---------- Security ---------- */
       panel({
-        title: 'Tài khoản & dữ liệu',
+        title: 'Bảo mật',
         titleIcon: 'shield',
         body: el('div.stack-3', {}, [
           infoRow('Mã sinh viên', user?.studentId ?? '—', true),
@@ -246,6 +440,36 @@ export function settingsPage(ctx) {
           infoRow('Khoa', user?.faculty ?? '—'),
           infoRow('Ngành', user?.major ?? '—'),
 
+          auth.isLive()
+            ? el('button.setting.setting--button', {
+                type: 'button',
+                onclick: openChangePassword,
+              }, [
+                el('div.setting__head', {}, [
+                  el('span.setting__icon', {}, icon('key')),
+                  el('div.setting__text', {}, [
+                    el('span.setting__title', {}, 'Đổi mật khẩu'),
+                    el('span.setting__desc', {},
+                      'Cập nhật mật khẩu trên hệ thống quản lý đào tạo của trường.'),
+                  ]),
+                ]),
+                el('span.setting__go', {}, icon('chevronRight')),
+              ])
+            : notice({
+                variant: 'info',
+                iconName: 'info',
+                text:
+                  'Đổi mật khẩu cần kết nối tới máy chủ thật. ' +
+                  'Bật USE_LIVE_API trong scripts/api/config.js để dùng tính năng này.',
+              }),
+        ]),
+      }),
+
+      /* ---------- Demo data ---------- */
+      panel({
+        title: 'Dữ liệu mẫu',
+        titleIcon: 'archive',
+        body: el('div.stack-3', {}, [
           el('div.setting', {}, [
             el('div.setting__head', {}, [
               el('span.setting__icon', {}, icon('refresh')),

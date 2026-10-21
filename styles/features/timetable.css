@@ -703,3 +703,205 @@
   opacity: 0.9;
 }
 
+
+/* ===========================================================================
+   Schedule page — live data layout
+   =========================================================================== */
+
+/* Page grid: main column + a sticky day detail rail. */
+.schedule-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 18rem;
+  gap: var(--space-5);
+  align-items: start;
+  margin-top: var(--space-4);
+}
+
+.schedule-main {
+  min-width: 0;
+}
+
+.schedule-source {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.schedule-source::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: var(--primary);
+}
+
+/* Detail rows in the aside rail. */
+.schedule-detail {
+  display: grid;
+  grid-template-columns: 5.5rem minmax(0, 1fr);
+  gap: var(--space-3);
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--surface-border);
+}
+
+.schedule-detail:last-child {
+  border-bottom: none;
+}
+
+.schedule-detail__time {
+  font-family: var(--font-display);
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.schedule-detail__body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.schedule-detail__body strong {
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+}
+
+.schedule-detail__body span {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+/* Agenda rows (day view). */
+.agenda-item__time {
+  display: flex;
+  flex-direction: column;
+  font-family: var(--font-display);
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.agenda-item__time strong {
+  font-size: var(--text-md);
+  font-weight: 800;
+}
+
+.agenda-item__time span {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.agenda-item__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+/* Below the grid breakpoint the week grid is useless, so the day view leads. */
+@media (max-width: 900px) {
+  .schedule-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .schedule-layout .sticky-aside {
+    order: -1;
+  }
+}
+
+/* Day headers double as a day selector in week view. */
+.tt__day {
+  border: none;
+  font: inherit;
+  cursor: pointer;
+}
+
+.tt__day-count {
+  font-size: var(--text-2xs, 0.6875rem);
+  font-weight: 600;
+  color: var(--text-muted);
+  opacity: 0.8;
+}
+
+.tt__day--selected {
+  background-color: var(--primary-soft);
+  box-shadow: inset 0 -2px 0 var(--primary);
+}
+
+.tt__day--today .tt__day-count {
+  color: var(--primary);
+}
+
+.tt__day:hover {
+  background-color: var(--surface-hover);
+}
+
+.tt__day--today:hover,
+.tt__day--selected:hover {
+  background-color: var(--primary-soft);
+}
+
+/* ===========================================================================
+   Schedule — compact 7-day grid
+   ---------------------------------------------------------------------------
+   Seven columns plus the time gutter do not fit at the original width, and a
+   3.4rem hour made the page taller than the viewport for no benefit. Both are
+   tightened here rather than in the component styles so the rest of the file
+   keeps its original scale.
+   =========================================================================== */
+
+.schedule-layout {
+  grid-template-columns: minmax(0, 1fr) 16rem;
+  gap: var(--space-4);
+}
+
+.timetable {
+  --hour-h: 2.75rem;
+  --break-h: 1.25rem;
+
+  grid-template-columns: 3.25rem repeat(var(--days, 7), minmax(6.5rem, 1fr));
+}
+
+/* A full week fits on one screen, so the page no longer scrolls at all. */
+.tt__day {
+  padding: var(--space-2) var(--space-1);
+}
+
+.tt__day-num {
+  font-size: var(--text-sm);
+}
+
+.tt__day-count {
+  font-size: 0.625rem;
+}
+
+.session {
+  padding: var(--space-1) var(--space-1) var(--space-1) calc(var(--space-1) + 3px);
+  gap: 1px;
+}
+
+.session__name {
+  font-size: var(--text-xs);
+  line-height: 1.25;
+}
+
+/* Room names wrap to two lines and push the block out of shape. */
+.session__meta {
+  font-size: 0.625rem;
+}
+
+@media (max-width: 1200px) {
+  .schedule-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .schedule-layout .sticky-aside {
+    order: -1;
+  }
+}

@@ -115,14 +115,17 @@ export async function documentsPage(ctx) {
           active: state.courseId === 'all',
           onclick: () => setFilter('courseId', 'all'),
         }),
-        ...facets.courses.map((course) =>
-          filterOption({
-            label: `${course.code} · ${course.name}`,
-            count: course.count,
-            active: state.courseId === course.id,
-            onclick: () => setFilter('courseId', course.id),
-          })
-        ),
+        ...facets.courses.map((facet) => {
+          // The backend only knows the course id; the catalogue supplies the
+          // code and name the UI shows.
+          const course = courses.find((c) => c.id === facet.id);
+          return filterOption({
+            label: course ? `${course.code} · ${course.name}` : 'Môn khác',
+            count: facet.count,
+            active: state.courseId === facet.id,
+            onclick: () => setFilter('courseId', facet.id),
+          });
+        }),
       ]),
 
       el('div.filter-group', {}, [
@@ -170,10 +173,13 @@ export async function documentsPage(ctx) {
       ]),
 
       hasActiveFilters()
-        ? el('button.btn.btn--soft.btn--sm.btn--block', {
+        ? button({
             type: 'button',
             iconName: 'refresh',
             label: 'Xoá tất cả bộ lọc',
+            variant: 'soft',
+            size: 'sm',
+            block: true,
             onclick: () => {
               Object.assign(state, {
                 query: '',
@@ -199,7 +205,7 @@ export async function documentsPage(ctx) {
     const active = [];
     if (state.courseId !== 'all') {
       const course = courses.find((c) => c.id === state.courseId);
-      active.push({ label: course ? `${course.code}` : 'Môn học', onClear: () => setFilter('courseId', 'all') });
+      active.push({ label: course ? `${course.code}` : 'Môn khác', onClear: () => setFilter('courseId', 'all') });
     }
     if (state.fileType !== 'all') {
       active.push({
@@ -494,15 +500,6 @@ export async function documentsPage(ctx) {
       ],
     });
 
-    const semesterField = select({
-      label: 'Học kỳ',
-      options: [
-        { value: 'HK2-2025', label: 'Học kỳ 2 năm học 2025-2026' },
-        { value: 'HK1-2025', label: 'Học kỳ 1 năm học 2025-2026' },
-        { value: 'HK2-2024', label: 'Học kỳ 2 năm học 2024-2025' },
-      ],
-    });
-
     const descField = textarea({
       label: 'Mô tả (không bắt buộc)',
       placeholder: 'Nội dung tài liệu, phạm vi, nguồn tham khảo…',
@@ -513,11 +510,11 @@ export async function documentsPage(ctx) {
 
     const zone = dropzone({
       accept: '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.rar,.png,.jpg,.jpeg',
-      hint: 'PDF, Office, nén hoặc ảnh — tối đa 50 MB',
+      hint: 'PDF, Office, nén hoặc ảnh — tối đa 10 MB',
       onFiles: (files) => {
         const chosen = files[0];
-        if (chosen.size > 50 * 1024 * 1024) {
-          showFileInfo('Tệp vượt quá 50 MB. Vui lòng chọn tệp nhỏ hơn.', 'error');
+        if (chosen.size > 10 * 1024 * 1024) {
+          showFileInfo('Tệp vượt quá 10 MB. Vui lòng chọn tệp nhỏ hơn.', 'error');
           return;
         }
         file = chosen;
@@ -555,7 +552,6 @@ export async function documentsPage(ctx) {
             title,
             courseId,
             description,
-            semester: semesterField.value,
             tags: [],
             file: file ?? (previewName ? { name: previewName, size: previewSize, type: 'application/pdf' } : null),
           });
@@ -583,7 +579,7 @@ export async function documentsPage(ctx) {
         zone.node,
         fileInfo,
         titleField.node,
-        el('div.grid.grid-2', {}, [courseField.node, semesterField.node]),
+        courseField.node,
         descField.node,
         el('div.divider'),
         el('div.grid.grid-2', {}, [

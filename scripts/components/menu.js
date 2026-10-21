@@ -63,6 +63,14 @@ export function openMenu({
     );
   });
 
+  // Park the node off-screen and hidden before it is measured. Appending a
+  // static block first would let it take the body width, which made an
+  // `align: 'end'` menu compute a left edge near 0 and slide under the sidebar.
+  menu.style.position = 'fixed';
+  menu.style.top = '0';
+  menu.style.left = '0';
+  menu.style.visibility = 'hidden';
+
   document.body.appendChild(menu);
 
   // Position after the node is measurable
@@ -85,9 +93,9 @@ export function openMenu({
     menu.style.transformOrigin = 'bottom ' + (align === 'end' ? 'right' : 'center');
   }
 
-  menu.style.position = 'fixed';
   menu.style.top = `${top}px`;
   menu.style.left = `${Math.min(Math.max(8, left), window.innerWidth - width - 8)}px`;
+  menu.style.visibility = '';
 
   let closed = false;
 
@@ -97,7 +105,7 @@ export function openMenu({
     document.removeEventListener('keydown', onKey, true);
     document.removeEventListener('pointerdown', onPointer, true);
     window.removeEventListener('resize', close);
-    window.removeEventListener('scroll', close, true);
+    window.removeEventListener('scroll', onScroll, true);
     anchor.setAttribute('aria-expanded', 'false');
     menu.style.transition = 'opacity 140ms ease, transform 140ms ease';
     menu.style.opacity = '0';
@@ -107,6 +115,20 @@ export function openMenu({
 
   function onPointer(event) {
     if (menu.contains(event.target) || anchor.contains(event.target)) return;
+    close();
+  }
+
+  /**
+   * Close when the page scrolls, not when the menu scrolls.
+   *
+   * The listener runs in the capture phase on `window`, so it also sees scroll
+   * events from any scrollable descendant — including the menu's own overflow
+   * area. Closing on those made a long menu impossible to browse.
+   */
+  function onScroll(event) {
+    if (event.target instanceof Node && (menu.contains(event.target) || anchor.contains(event.target))) {
+      return;
+    }
     close();
   }
 
@@ -136,7 +158,7 @@ export function openMenu({
     document.addEventListener('keydown', onKey, true);
     document.addEventListener('pointerdown', onPointer, true);
     window.addEventListener('resize', close);
-    window.addEventListener('scroll', close, true);
+    window.addEventListener('scroll', onScroll, true);
   }, 0);
 
   anchor.setAttribute('aria-expanded', 'true');
@@ -157,14 +179,18 @@ export function openPopover({ anchor, header, body, width = null }) {
 
   popover.appendChild(header);
   popover.appendChild(body);
+  popover.style.position = 'fixed';
+  popover.style.top = '0';
+  popover.style.left = '0';
+  popover.style.visibility = 'hidden';
   document.body.appendChild(popover);
 
   const rect = anchor.getBoundingClientRect();
   const nodeWidth = popover.offsetWidth;
 
-  popover.style.position = 'fixed';
   popover.style.top = `${rect.bottom + 8}px`;
   popover.style.left = `${Math.max(8, Math.min(rect.right - nodeWidth, window.innerWidth - nodeWidth - 8))}px`;
+  popover.style.visibility = '';
 
   let closed = false;
 
@@ -173,9 +199,8 @@ export function openPopover({ anchor, header, body, width = null }) {
     closed = true;
     document.removeEventListener('keydown', onKey, true);
     document.removeEventListener('pointerdown', onPointer, true);
-    window.addEventListener('resize', close);
     window.removeEventListener('resize', close);
-    window.removeEventListener('scroll', close, true);
+    window.removeEventListener('scroll', onScroll, true);
     anchor.setAttribute('aria-expanded', 'false');
     popover.style.transition = 'opacity 140ms ease, transform 140ms ease';
     popover.style.opacity = '0';
@@ -185,6 +210,14 @@ export function openPopover({ anchor, header, body, width = null }) {
 
   function onPointer(event) {
     if (popover.contains(event.target) || anchor.contains(event.target)) return;
+    close();
+  }
+
+  /** Ignore scrolls that belong to the popover's own list (see openMenu). */
+  function onScroll(event) {
+    if (event.target instanceof Node && (popover.contains(event.target) || anchor.contains(event.target))) {
+      return;
+    }
     close();
   }
 
@@ -199,7 +232,7 @@ export function openPopover({ anchor, header, body, width = null }) {
     document.addEventListener('keydown', onKey, true);
     document.addEventListener('pointerdown', onPointer, true);
     window.addEventListener('resize', close);
-    window.addEventListener('scroll', close, true);
+    window.addEventListener('scroll', onScroll, true);
   }, 0);
 
   anchor.setAttribute('aria-expanded', 'true');

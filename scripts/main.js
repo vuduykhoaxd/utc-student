@@ -19,7 +19,17 @@
 import { el, $ } from './utils/dom.js';
 import { enhance } from './utils/motion.js';
 import { createRouter } from './core/router.js';
-import { authStore, uiStore, bootSession, applyTheme, toggleTheme, toggleSidebar } from './core/app-store.js';
+import {
+  authStore,
+  uiStore,
+  bootSession,
+  applyTheme,
+  toggleTheme,
+  toggleSidebar,
+  applyIncomingNotification,
+  applyNotificationsRead,
+} from './core/app-store.js';
+import * as realtime from './api/realtime-client.js';
 import { initPreferences } from './core/preferences.js';
 import { createBackdrop } from './components/topbar.js';
 import { createAppShell, mountToastHost } from './components/app-shell.js';
@@ -95,17 +105,31 @@ function outlet() {
 /**
  * Wrap a page renderer: ensure the shell exists, hand the renderer the live
  * `#view` node, then run the motion enhancements over the result.
+ *
+ * The renderer may return a teardown function. It is forwarded to the router,
+ * which calls it before the next navigation; dropping it leaks that page's
+ * realtime subscriptions and timers into whatever page comes next.
+ *
+ * `fill` marks routes that size themselves against the viewport. The shell
+ * then stops scrolling so the page does not grow a second scrollbar.
  */
-function page(render) {
-  return (ctx) => {
+function page(render, { fill = false } = {}) {
+  return async (ctx) => {
     ensureShell();
 
     const target = outlet();
     if (!target) return null;
 
-    render({ ...ctx, outlet: target });
+    const content = target.closest('.app__content');
+    content?.classList.toggle('is-fill', fill);
+
+    const cleanup = await render({ ...ctx, outlet: target });
     enhance(target);
-    return null;
+
+    // No class cleanup here: a stale render may be discarded after a newer
+    // page already mounted, and removing `is-fill` then would strip it from
+    // the live page. Every mount sets the flag explicitly instead.
+    return typeof cleanup === 'function' ? cleanup : null;
   };
 }
 
@@ -148,7 +172,7 @@ const ROUTES = [
   { path: '/documents', view: page(documentsPage), title: 'Tài liệu', auth: true },
   { path: '/posts', view: page(postsPage), title: 'Bài đăng', auth: true },
   { path: '/friends', view: page(friendsPage), title: 'Tìm bạn bè', auth: true },
-  { path: '/chat', view: page(chatPage), title: 'Tin nhắn', auth: true },
+  { path: '/chat', view: page(chatPage, { fill: true }), title: 'Tin nhắn', auth: true },
   { path: '/profile', view: page(profilePage), title: 'Hồ sơ', auth: true },
   { path: '/notifications', view: page(notificationsPage), title: 'Thông báo', auth: true },
   { path: '/settings', view: page(settingsPage), title: 'Cài đặt', auth: true },
@@ -180,16 +204,58 @@ function guard({ route, pathname }) {
 /* 5. Auth transitions                                                         */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * Push notifications, for the whole session.
+ *
+ * Registered here rather than on the notifications page so the bell reacts
+ * wherever the student is. The handler is deliberately dumb — bump the count
+ * and show a toast — because anything smarter needs to know which page is
+ * mounted, and that is the page's job to subscribe to.
+ *
+ * Tied to the auth state: a notice that arrives after signing out must not be
+ * applied to whoever signs in next.
+ */
+let stopNotificationFeed = null;
+let stopNotificationReadFeed = null;
+
+function startNotificationFeed() {
+  stopNotificationFeed?.();
+  stopNotificationFeed = realtime.on(realtime.REALTIME_EVENTS.NOTIFICATION, (notice) => {
+    if (authStore.getState().status !== 'authenticated') return;
+    applyIncomingNotification(notice);
+  });
+
+  // The server clears a conversation's notices when the thread is read; the
+  // bell must follow that without waiting for the next page load.
+  stopNotificationReadFeed?.();
+  stopNotificationReadFeed = realtime.on(
+    realtime.REALTIME_EVENTS.NOTIFICATION_READ,
+    ({ ids } = {}) => {
+      if (authStore.getState().status !== 'authenticated') return;
+      applyNotificationsRead(ids ?? []);
+    }
+  );
+}
+
+function endNotificationFeed() {
+  stopNotificationFeed?.();
+  stopNotificationFeed = null;
+  stopNotificationReadFeed?.();
+  stopNotificationReadFeed = null;
+}
+
 authStore.subscribe((state, prev) => {
   if (state.status === prev.status) return;
 
   if (state.status === 'authenticated') {
+    startNotificationFeed();
     ensureShell();
     // Re-resolve so the guard lets the current URL through
     requestAnimationFrame(() => router?.resolve());
   }
 
   if (state.status === 'anonymous') {
+    endNotificationFeed();
     dropShell();
     const hash = window.location.hash.replace(/^#/, '') || '/';
     if (hash !== '/login') window.location.hash = '/login';

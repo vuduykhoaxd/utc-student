@@ -10,6 +10,7 @@ import { icon } from '../components/icons.js';
 import { button, avatar, notice } from '../components/ui.js';
 import { textInput, checkbox } from '../components/forms.js';
 import { authStore, signIn, toggleTheme, uiStore } from '../core/app-store.js';
+import { auth } from '../core/api.js';
 import { demoAccounts } from '../data/seed.js';
 import { formatNumber } from '../utils/format.js';
 
@@ -162,33 +163,46 @@ export function renderLogin(outlet) {
     className: 'auth__submit',
   });
 
-  const demoCard = el('div.demo-card', {}, [
-    el('div.demo-card__head', {}, [icon('info'), el('span', {}, 'Tài khoản trải nghiệm')]),
-    ...demoAccounts.map((account) =>
-      el(
-        'button.demo-account',
-        {
-          type: 'button',
-          onclick: () => {
-            studentIdField.input.value = account.studentId;
-            passwordField.input.value = account.password;
-            studentIdField.clearError?.();
-            passwordField.clearError?.();
-            hideAlert();
-            submitButton.focus();
-          },
-        },
-        [
-          avatar({ user: { ...account, avatarFrom: 'var(--brand-400)', avatarTo: 'var(--violet-500)' }, size: 'sm' }),
-          el('div.demo-account__text', {}, [
-            el('span.demo-account__name', {}, account.fullName),
-            el('span.demo-account__cred', {}, `${account.studentId} · ${account.password}`),
-          ]),
-          el('span.demo-account__go', {}, icon('arrowRight')),
-        ]
-      )
-    ),
-  ]);
+  /* Quick-fill accounts only exist for the local demo dataset. With the real
+     backend there are no seeded passwords to offer, so the card is replaced by
+     an explanation of where credentials come from. */
+  const demoCard = auth.isLive()
+    ? el('div.demo-card', {}, [
+        el('div.demo-card__head', {}, [icon('shield'), el('span', {}, 'Đăng nhập qua hệ thống UTC')]),
+        el(
+          'p.demo-card__note',
+          {},
+          'Tài khoản và mật khẩu do Nhà trường cấp. Thông tin được gửi tới máy chủ của ' +
+            'hệ thống quản lý đào tạo; trang này không lưu mật khẩu của bạn.'
+        ),
+      ])
+    : el('div.demo-card', {}, [
+        el('div.demo-card__head', {}, [icon('info'), el('span', {}, 'Tài khoản trải nghiệm')]),
+        ...demoAccounts.map((account) =>
+          el(
+            'button.demo-account',
+            {
+              type: 'button',
+              onclick: () => {
+                studentIdField.input.value = account.studentId;
+                passwordField.input.value = account.password;
+                studentIdField.clearError?.();
+                passwordField.clearError?.();
+                hideAlert();
+                submitButton.focus();
+              },
+            },
+            [
+              avatar({ user: { ...account, avatarFrom: 'var(--brand-400)', avatarTo: 'var(--violet-500)' }, size: 'sm' }),
+              el('div.demo-account__text', {}, [
+                el('span.demo-account__name', {}, account.fullName),
+                el('span.demo-account__cred', {}, `${account.studentId} · ${account.password}`),
+              ]),
+              el('span.demo-account__go', {}, icon('arrowRight')),
+            ]
+          )
+        ),
+      ]);
 
   const form = el('form.auth__form', { novalidate: true, 'data-reveal': 'zoom' }, [
     el('div.stack-1', {}, [
@@ -246,7 +260,11 @@ export function renderLogin(outlet) {
     submitButton.classList.add('is-loading');
     submitButton.disabled = true;
 
-    const user = await signIn({ studentId, password });
+    const user = await signIn({
+      studentId,
+      password,
+      remember: rememberToggle.input?.checked ?? true,
+    });
 
     submitButton.classList.remove('is-loading');
     submitButton.disabled = false;
@@ -256,6 +274,8 @@ export function renderLogin(outlet) {
       return;
     }
 
+    // Never carry a typed password into a new page view.
+    passwordField.input.value = '';
     window.location.hash = '/';
   });
 

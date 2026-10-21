@@ -381,6 +381,39 @@
   color: var(--text-muted);
 }
 
+/* Live countdown in the "Lịch học hôm nay" header. */
+.today-countdown {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: var(--radius-full, 999px);
+  border: 1px solid var(--surface-border);
+  background-color: var(--surface-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.today-countdown svg {
+  width: 0.8rem;
+  height: 0.8rem;
+  flex-shrink: 0;
+}
+
+.today-countdown[data-state='now'] {
+  color: var(--primary);
+  background-color: var(--primary-soft);
+  border-color: var(--primary-ring);
+}
+
+.today-countdown[data-state='done'] {
+  color: var(--text-faint);
+}
+
 /* ---------- Activity feed ---------- */
 .feed {
   display: flex;

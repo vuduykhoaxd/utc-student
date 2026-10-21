@@ -42,6 +42,26 @@ function greeting(date = new Date()) {
   return 'Chào buổi tối';
 }
 
+/**
+ * The name to greet someone by.
+ *
+ * Vietnamese names are written family-first, so the given name is the LAST
+ * word: "VŨ DUY KHOA" is greeted as "Khoa", not "Duy". A single-word name is
+ * used as-is.
+ *
+ * @param {string} fullName
+ * @returns {string}
+ */
+function greetingName(fullName = '') {
+  const words = String(fullName).trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return '';
+
+  const given = words[words.length - 1];
+
+  // Lower-case the rest so "KHOA" reads as "Khoa" rather than shouting.
+  return given.charAt(0).toUpperCase() + given.slice(1).toLowerCase();
+}
+
 /** Quick-access shortcuts. */
 const SHORTCUTS = [
   { route: '/schedule', label: 'Thời khóa biểu', desc: 'Tuần học & lịch thi', iconName: 'calendar', tone: 'primary' },
@@ -66,7 +86,7 @@ export async function dashboardPage(ctx) {
   try {
     [data, todaySessions, upcomingNews] = await Promise.all([
       dashboard.summary(),
-      scheduleApi.getDay(new Date()),
+      scheduleApi.getLiveDay(new Date()),
       newsApi.list({ limit: 3 }),
     ]);
   } catch (error) {
@@ -83,7 +103,12 @@ export async function dashboardPage(ctx) {
   }
 
   const { user, stats, nextExam, courses, recentActivity } = data;
-  const firstName = user.fullName.split(' ').slice(-2, -1)[0] || user.fullName;
+
+  // Fall back to no name at all rather than greeting someone "undefined".
+  const known = greetingName(user.fullName);
+  const heroTitle = known
+    ? [`${greeting()}, `, el('em', {}, `${known}!`)]
+    : [greeting()];
 
   /* ---------- Hero ---------- */
   const hero = el('section.hero', { 'data-reveal': 'zoom' }, [
@@ -92,10 +117,7 @@ export async function dashboardPage(ctx) {
         icon('sparkle'),
         el('span', {}, `${WEEKDAY_FULL[new Date().getDay()]}, ${formatDate(new Date(), 'medium')}`),
       ]),
-      el('h1.hero__title', {}, [
-        `${greeting()}, `,
-        el('em', {}, `${firstName}!`),
-      ]),
+      el('h1.hero__title', {}, heroTitle),
       el('p.hero__sub', {}, heroSentence(stats, nextExam)),
       el('div.hero__actions', {}, [
         button({
@@ -170,9 +192,11 @@ export async function dashboardPage(ctx) {
   ));
 
   /* ---------- Today's agenda ---------- */
+  // `getDay`/`getLiveDay` answer `{ date, sessions }`, not a bare array.
+  const sessionsToday = Array.isArray(todaySessions) ? todaySessions : (todaySessions?.sessions ?? []);
   const nowMinutes = new Date().getHours() * 60 + new Date().getMinutes();
-  const agendaBody = todaySessions.length
-    ? el('div.timeline', {}, todaySessions.map((session, index) => {
+  const agendaBody = sessionsToday.length
+    ? el('div.timeline', {}, sessionsToday.map((session, index) => {
         const start = toMinutes(session.start);
         const end = toMinutes(session.end);
         const isPast = end < nowMinutes;
@@ -206,7 +230,7 @@ export async function dashboardPage(ctx) {
                 el('span.timeline__title', {}, session.courseName),
                 el('span.timeline__meta', {}, [
                   icon('mapPin'),
-                  ` ${session.room} · ${session.teacher}`,
+                  ` ${[session.room, session.teacher].filter(Boolean).join(' · ') || 'Chưa có phòng học'}`,
                 ]),
               ]
             ),
@@ -306,8 +330,9 @@ export async function dashboardPage(ctx) {
           title: 'Lịch học hôm nay',
           titleIcon: 'calendar',
           actions: [
+            sessionsToday.length ? sessionCountdown(sessionsToday) : null,
             el('a.btn.btn--ghost.btn--sm', { href: '#/schedule' }, 'Xem tuần'),
-          ],
+          ].filter(Boolean),
           body: agendaBody,
         }),
         panel({
@@ -426,6 +451,74 @@ function countdownCard(exam) {
     }
   });
   observer.observe(document.body, { childList: true, subtree: true });
+
+  return node;
+}
+
+/**
+ * Small live countdown for today's classes.
+ *
+ * Counts to the next start; while a class is running it counts the minutes
+ * left, and after the last one it says the day is over.
+ */
+function sessionCountdown(sessions) {
+  const node = el('div.today-countdown', { role: 'status', 'aria-live': 'polite' });
+  const label = el('span.today-countdown__label');
+
+  const clock = (minutes) => {
+    const total = Math.max(0, Math.round(minutes * 60));
+    const hours = Math.floor(total / 3600);
+    const mins = String(Math.floor((total % 3600) / 60)).padStart(2, '0');
+    const secs = String(total % 60).padStart(2, '0');
+    return hours > 0 ? `${hours}:${mins}:${secs}` : `${mins}:${secs}`;
+  };
+
+  const items = sessions
+    .map((session) => ({
+      ...session,
+      from: toMinutes(session.start),
+      to: toMinutes(session.end),
+    }))
+    .filter((session) => Number.isFinite(session.from) && Number.isFinite(session.to));
+
+  const update = () => {
+    const now = new Date();
+    const minutes = now.getHours() * 60 + now.getMinutes() + now.getSeconds() / 60;
+
+    const current = items.find((s) => minutes >= s.from && minutes < s.to);
+    const next = items
+      .filter((s) => s.from > minutes)
+      .sort((a, b) => a.from - b.from)[0];
+
+    if (current) {
+      node.dataset.state = 'now';
+      label.textContent = `Đang học · còn ${clock(current.to - minutes)}`;
+      node.title = `${current.courseName} · kết thúc ${current.end}`;
+      return;
+    }
+
+    if (next) {
+      node.dataset.state = 'next';
+      label.textContent = `Tiết tiếp theo sau ${clock(next.from - minutes)}`;
+      node.title = `${next.courseName} · ${next.start}${next.room ? ` · ${next.room}` : ''}`;
+      return;
+    }
+
+    node.dataset.state = 'done';
+    label.textContent = 'Đã hết tiết trong ngày';
+    node.title = 'Hôm nay không còn tiết học nào.';
+  };
+
+  node.append(icon('clock'), label);
+  update();
+
+  const timer = setInterval(() => {
+    if (!node.isConnected) {
+      clearInterval(timer);
+      return;
+    }
+    update();
+  }, 1000);
 
   return node;
 }

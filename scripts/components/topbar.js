@@ -15,6 +15,7 @@ import {
   setMobileNav,
   toggleSidebar,
   toast,
+  refreshUnread,
 } from '../core/app-store.js';
 import { notificationsApi } from '../core/api.js';
 import { formatDate, formatTime } from '../utils/format.js';
@@ -26,6 +27,7 @@ const NOTIF_ICON = {
   grade: 'award',
   chat: 'messages',
   friend: 'users',
+  post: 'messages',
   doc: 'fileText',
   alert: 'alert',
 };
@@ -35,6 +37,7 @@ const NOTIF_TONE = {
   grade: 'var(--success-soft)',
   chat: 'var(--accent-soft)',
   friend: 'var(--violet-soft)',
+  post: 'var(--brand-soft)',
   doc: 'var(--signal-soft)',
   alert: 'var(--danger-soft)',
 };
@@ -162,7 +165,9 @@ export function createTopbar({ onSearch } = {}) {
           type: 'button',
           onclick: async () => {
             await notificationsApi.markAllRead();
-            uiStore.setState({ unreadNotifications: 0 });
+            // Re-read the real count rather than assuming zero: another tab may
+            // have added a notice between the click and this line.
+            await refreshUnread();
             refreshBell();
             popover.close();
             toast({ title: 'Đã đánh dấu tất cả là đã đọc', variant: 'success' });
@@ -185,9 +190,33 @@ export function createTopbar({ onSearch } = {}) {
     const popover = openPopover({ anchor, header, body });
 
     function notificationRow(item) {
+      /**
+       * A notice is also a link: it says something happened, and clicking it
+       * should take you there.
+       *
+       * Marked read on the way out, because opening the thing the notice is
+       * about is the definition of having read it.
+       */
       return el(
-        `div.notif.notif--${item.category}`,
-        { class: item.read ? '' : 'notif--unread' },
+        `button.notif.notif--${item.category}`,
+        {
+          type: 'button',
+          class: item.read ? '' : 'notif--unread',
+          onclick: async () => {
+            if (!item.read) {
+              await notificationsApi.markRead(item.id);
+              item.read = true;
+              await refreshUnread();
+              refreshBell();
+            }
+
+            popover.close();
+
+            if (item.route && item.route !== '/notifications') {
+              window.location.hash = item.route;
+            }
+          },
+        },
         [
           el('span.notif__icon', { style: { '--notif-tint': NOTIF_TONE[item.category] } }, icon(NOTIF_ICON[item.category] ?? 'info')),
           el('div.notif__body', {}, [
@@ -203,6 +232,15 @@ export function createTopbar({ onSearch } = {}) {
   function refreshBell() {
     const count = uiStore.getState().unreadNotifications;
     bellNode.classList.toggle('has-unread', count > 0);
+
+    /**
+     * The accessible name has to track the count too.
+     *
+     * It is written once when the button is built, so without this a screen
+     * reader would keep announcing "0 chưa đọc" while a dot showed 5.
+     */
+    bellNode.setAttribute('aria-label', `Thông báo (${count} chưa đọc)`);
+    bellNode.setAttribute('title', count > 0 ? `${count} thông báo chưa đọc` : 'Thông báo');
 
     const existing = bellNode.querySelector('.quick-action__dot');
     if (count > 0) {

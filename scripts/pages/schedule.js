@@ -1,186 +1,364 @@
 /**
  * Schedule / timetable
+ * ---------------------------------------------------------------------------
+ * The student's real class timetable, straight from the UTC portal.
  *
- * Desktop shows a real week grid: one row per teaching hour with sessions
- * placed using `grid-row: start / span n`, so a three-hour lab is visibly
- * taller than a 90-minute lecture. Mobile falls back to a day agenda.
+ * Week navigation is by offset from today (0 = this week, 1 = next, -1 = last)
+ * rather than by academic week number, because the portal takes a date range and
+ * has no notion of "week 7 of the term". That also means any week can be opened,
+ * including weeks in a previous term.
  *
- * Also renders exam countdowns, a weekly load chart, and course cards with
- * attendance tracking.
+ * Desktop shows a week grid: one row per teaching hour, with sessions placed
+ * using `grid-row: start / span n` so a three-hour lab is visibly taller than a
+ * 90-minute lecture. Mobile falls back to a day agenda.
+ *
+ * When the backend cannot be reached the bundled dataset is used instead, and
+ * the page says so — a cancelled class is exactly the case where quietly
+ * showing stale data would be the wrong call.
  */
 
-import { el , render } from '../utils/dom.js';
+import { el } from '../utils/dom.js';
 import { icon } from '../components/icons.js';
-import {
-  button,
-  panel,
-  badge,
-  stat,
-  emptyState,
-  barChart,
-  labelledBar,
-  progressRing,
-  segmented,
-} from '../components/ui.js';
+import { button, panel, emptyState, segmented, badge } from '../components/ui.js';
 import { pageHeader } from '../components/page.js';
 import { schedule as scheduleApi } from '../core/api.js';
 import { toast } from '../core/app-store.js';
-import {
-  WEEKDAY_SHORT,
-  addDays,
-  startOfDay,
-  toMinutes,
-  schoolDay,
-  percent,
-} from '../utils/format.js';
+import { WEEKDAY_SHORT, addDays, startOfDay, toMinutes, formatDate } from '../utils/format.js';
+import { enhance } from '../utils/motion.js';
 
-/** Palette index -> CSS colour variable name. */
-const COLOR_NAMES = ['brand', 'violet', 'accent', 'signal', 'success', 'danger'];
-
-/** Visible hour range of the grid. */
+/** Visible hour bounds. The actual grid is fitted to the week's data. */
 const GRID_START = 7;
-const GRID_END = 17;
+const GRID_END = 21;
+
+/** Never fit tighter than this, so a single morning class is not a huge block. */
+const MIN_VISIBLE_HOURS = 8;
+
+/** Monday–Sunday. */
+const DAYS_SHOWN = 7;
 
 /** Lunch break boundaries, in minutes since midnight. */
 const BREAK_START = 11 * 60 + 30;
 const BREAK_END = 12 * 60 + 45;
 
 /**
- * Build the grid row model.
+ * Week offsets the picker may reach.
  *
- * One row per teaching hour, plus a single thin lunch-break strip inserted
- * just before the 12:00 row. Sessions are placed with
- * `grid-row: start / span n` against this model, so a three-hour lab is
- * visibly three rows tall and nothing ever bleeds across the break.
- *
- * @returns {Array<{kind: 'hour'|'break', hour?: number, minutes?: number, label?: string}>}
+ * Forward stops at the end of the calendar year: the portal has no schedule
+ * published past it, and letting the user wander into 2027 only to show an empty
+ * grid is worse than not offering it. The backend still answers those weeks, so
+ * a deep link degrades to "chưa có dữ liệu" rather than an error.
  */
-function buildRowModel() {
-  const rows = [];
+const PAST_LIMIT = 8;
+const FUTURE_LIMIT = () => {
+  const now = new Date();
+  const yearEnd = new Date(now.getFullYear(), 11, 31);
 
-  // The break is inserted before the first hour at or after its end time, so
-  // "12:45" puts the strip between the 11:00 and 12:00 rows.
-  const breakBeforeHour = Math.ceil(BREAK_END / 60);
-  const breakLabel = `Giờ nghỉ trưa · ${clock(BREAK_START)}–${clock(BREAK_END)}`;
+  const monday = startOfDay(new Date(now));
+  monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));
 
-  for (let hour = GRID_START; hour <= GRID_END; hour += 1) {
-    if (hour === breakBeforeHour) {
-      rows.push({ kind: 'break', label: breakLabel });
-    }
-    rows.push({ kind: 'hour', hour, minutes: hour * 60 });
-  }
+  return Math.max(0, Math.floor((yearEnd - monday) / (7 * 24 * 3600 * 1000)));
+};
 
-  return rows;
+const isCompact = () => window.matchMedia('(max-width: 900px)').matches;
+
+  /**
+   * Row model for the week currently on screen.
+   *
+   * Every session is positioned against it, so it has to be the same model the
+   * grid was built from — hence it is refreshed inside `buildWeekGrid`.
+   */
+  let rowsCache = [];
+
+/* -------------------------------------------------------------------------- */
+/* Helpers                                                                     */
+/* -------------------------------------------------------------------------- */
+
+/** yyyy-MM-dd in local time. Avoids toISOString(), which shifts by timezone. */
+function isoDay(date) {
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
-/** Minutes-since-midnight -> "HH:MM". */
-function clock(minutes) {
-  return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+function parseIsoDay(value) {
+  const [y, m, d] = String(value).split('-').map(Number);
+  return new Date(y, (m ?? 1) - 1, d ?? 1);
+}
+
+/** Minutes since midnight for "HH:MM". */
+function minutesOf(time) {
+  const [h, m] = String(time ?? '0:0').split(':').map(Number);
+  return (h || 0) * 60 + (m || 0);
 }
 
 /**
- * How many grid rows a session occupies. Never crosses a break row.
- * @param {ReturnType<typeof buildRowModel>} rows
+ * Stable colour per subject, so a course keeps its colour across weeks.
+ *
+ * Returns 1–6 to match the existing `.course-c1` … `.course-c6` classes, which
+ * are what actually set the session's tint, border and gradient variables.
  */
-function spanOf(rows, startMinutes, endMinutes) {
-  const startIndex = rows.findIndex(
-    (row) => row.kind === 'hour' && row.minutes === startMinutes
-  );
-  if (startIndex < 0) return 1;
+function colourFor(subject) {
+  const key = String(subject ?? '');
+  let hash = 0;
+  for (let i = 0; i < key.length; i += 1) hash = (hash * 31 + key.charCodeAt(i)) >>> 0;
+  return (hash % 6) + 1;
+}
 
-  let span = 0;
-  for (let i = startIndex; i < rows.length; i += 1) {
-    if (rows[i].kind !== 'hour') break;
-    span += 1;
-    if (rows[i].minutes >= endMinutes) break;
+
+/**
+ * Grid rows: one per teaching hour, plus a lunch strip.
+ *
+ * Sessions are placed with `grid-row: start / span n` against this model, so a
+ * three-hour lab is visibly three rows tall and nothing bleeds across the break.
+ */
+function buildRowModel(sessions) {
+  /**
+   * Fit the grid to the week.
+   *
+   * A fixed 07:00–18:00 window is mostly empty for most students — this one
+   * only has two blocks a day — which stretches the page and makes every class
+   * look small. Bounds follow the data, with an hour of breathing room and a
+   * floor so a single morning class does not become one giant row.
+   */
+  let first = GRID_END;
+  let last = GRID_START;
+
+  for (const session of sessions) {
+    const start = minutesOf(session.startTime);
+    const end = minutesOf(session.endTime) || start + 45;
+
+    first = Math.min(first, Math.floor(start / 60));
+    last = Math.max(last, Math.ceil(end / 60));
   }
 
-  return Math.max(1, span);
+  if (first >= last) return buildHourRows(GRID_START, GRID_START + 1, sessions);
+
+  let startHour = Math.max(GRID_START, first - 1);
+  let endHour = Math.min(GRID_END, last + 1);
+
+  if (endHour - startHour < MIN_VISIBLE_HOURS) {
+    // Grow downward first — a school day starts early and ends late.
+    endHour = Math.min(GRID_END, startHour + MIN_VISIBLE_HOURS);
+    startHour = Math.max(GRID_START, endHour - MIN_VISIBLE_HOURS);
+  }
+
+  return buildHourRows(startHour, endHour, sessions);
 }
 
-/** Map a school day number (Thứ 2 = 2 … Chủ Nhật = 1) to a Date relative to today. */
-function dayFromIso(day) {
-  const today = startOfDay(new Date());
-  // School days are 1-based with Sunday = 1 and Monday = 2, so a plain
-  // difference can overflow the week — normalise it.
-  const delta = (((day - schoolDay(today)) % 7) + 7) % 7;
-  return addDays(today, delta);
+/** One row per hour, plus the lunch strip when nothing is scheduled across it. */
+function buildHourRows(startHour, endHour, sessions) {
+  const hours = [];
+  let breakPlaced = false;
+
+  /**
+   * The lunch strip is only honest if nothing is scheduled across it.
+   *
+   * A morning class running 09:00–12:00 overlaps 11:30–12:45, and drawing a
+   * "lunch" row through it would show a break in the middle of a lecture.
+   */
+  const overlapsBreak = sessions.some((session) => {
+    const start = minutesOf(session.startTime);
+    const end = minutesOf(session.endTime) || start + 45;
+    return start < BREAK_END && end > BREAK_START;
+  });
+
+  for (let h = startHour; h <= endHour; h += 1) {
+    // Lunch starts mid-morning, so the strip belongs above the first hour that
+    // begins at or after it.
+    if (!breakPlaced && !overlapsBreak && h * 60 >= BREAK_START) {
+      hours.push({ kind: 'break', minutes: BREAK_START, label: 'Nghỉ trưa' });
+      breakPlaced = true;
+    }
+
+    hours.push({ kind: 'hour', hour: h });
+  }
+
+  return hours;
 }
 
-/** Narrow viewports get the day agenda instead of the week grid. */
-const isCompact = () => window.matchMedia('(max-width: 900px)').matches;
+/* -------------------------------------------------------------------------- */
+/* Page                                                                        */
+/* -------------------------------------------------------------------------- */
 
-/** @param {HTMLElement} outlet @param {object} ctx - Router context. */
 export async function schedulePage(ctx) {
   const outlet = ctx.outlet;
-  const term = await scheduleApi.term();
 
   const state = {
-    week: term.currentWeek,
-    sessions: [],
-    // The week grid is hidden below 900px, so start in day mode there.
+    /** 0 = this week, 1 = next, -1 = last. */
+    weekOffset: 0,
+    week: null,
+    /** false while loading, then true when live data rendered. */
+    live: false,
+    /**
+     * True once the week is past 31 December.
+     *
+     * The portal returns an empty result rather than an error there, which would
+     * otherwise be indistinguishable from "you have no classes this week".
+     */
+    beyondTerm: false,
     view: isCompact() ? 'day' : 'week',
-    day: schoolDay(new Date()),
+    selectedDate: isoDay(new Date()),
   };
 
   const gridSlot = el('div');
   const asideSlot = el('div.sticky-aside');
-  const summarySlot = el('div.grid.grid-auto-sm');
+  const weekLabel = el('span.term-bar__label');
+  const sourceNote = el('span.schedule-source');
+
+  /**
+   * Subtitle slot.
+   *
+   * A node rather than a string because whether the data is live is only known
+   * after the first fetch — building the header before that would permanently
+   * claim it is sample data.
+   */
+  const subtitleSlot = el('span');
+  const todayBtn = button({
+    variant: 'ghost',
+    size: 'sm',
+    iconName: 'calendar',
+    label: 'Tuần này',
+    onclick: () => goToWeek(0),
+  });
 
   /* ================= Data ================= */
 
-  async function loadWeek() {
-    const result = await scheduleApi.getWeek({ week: state.week });
-    state.sessions = result.sessions;
-    if (state.view === 'day' && !state.sessions.some((s) => s.day === state.day)) {
-      state.day = pickTeachingDay(state.sessions);
-    }
-    draw();
-  }
-
-  async function loadDay() {
-    let result = await scheduleApi.getDay(dayFromIso(state.day));
-
-    if (!result.sessions.length) {
-      // Landing on a free day (e.g. Sunday) — jump to the next teaching day
-      const week = await scheduleApi.getWeek({ week: state.week });
-      const next = pickTeachingDay(week.sessions);
-      if (next !== state.day) {
-        state.day = next;
-        result = await scheduleApi.getDay(dayFromIso(state.day));
-      }
-    }
-
-    state.sessions = result.sessions;
-    draw();
-  }
-
   /**
-   * First day in Mon→Sat order that actually has classes, preferring today or
-   * the next one coming up. Falls back to today's school day.
+   * Load a week.
+   *
+   * Live data is preferred; the bundled dataset is a fallback so the page still
+   * renders something offline or during an outage.
    */
-  function pickTeachingDay(sessions) {
-    const teaching = [...new Set(sessions.map((s) => s.day))].sort((a, b) => a - b);
-    if (!teaching.length) return state.day;
-    if (teaching.includes(state.day)) return state.day;
-    const today = schoolDay(new Date());
-    return teaching.find((d) => d > today) ?? teaching[0];
+  async function loadWeek() {
+    gridSlot.setAttribute('aria-busy', 'true');
+
+    const live = await scheduleApi.getLiveWeek({ weekOffset: state.weekOffset });
+    state.live = Boolean(live);
+
+    if (live) {
+      state.week = {
+        from: live.from,
+        to: live.to,
+        days: live.days,
+      };
+      state.beyondTerm = Boolean(live.beyondTerm);
+    } else {
+      const demo = await scheduleApi.getWeek({ week: 1 });
+      state.week = fromDemoSessions(demo.sessions);
+      state.beyondTerm = false;
+    }
+
+    // Keep the selected day inside the week that just loaded.
+    if (!state.week.days.some((d) => d.date === state.selectedDate)) {
+      const today = isoDay(new Date());
+      state.selectedDate = state.week.days.some((d) => d.date === today)
+        ? today
+        : (state.week.days.find((d) => d.sessions.length)?.date ?? state.week.from);
+    }
+
+    gridSlot.removeAttribute('aria-busy');
+
+    subtitleSlot.textContent = state.live
+      ? 'Dữ liệu trực tiếp từ hệ thống quản lý đào tạo UTC'
+      : 'Đang hiển thị dữ liệu mẫu — không kết nối được hệ thống nhà trường';
+
+    draw();
   }
+
+  /** Reshape the bundled dataset into the same shape the backend returns. */
+  function fromDemoSessions(sessions) {
+    const monday = startOfDay(new Date());
+    const days = [];
+
+    for (let i = 0; i < 7; i += 1) {
+      const date = addDays(monday, i);
+      days.push({
+        date: isoDay(date),
+        weekday: i + 1,
+        sessions: [],
+      });
+    }
+
+    for (const s of sessions) {
+      const index = Number(s.day) - 1;
+      if (!Number.isInteger(index) || index < 0 || index > 6) continue;
+
+      days[index].sessions.push({
+        id: s.id,
+        date: days[index].date,
+        subject: s.courseName,
+        className: '',
+        teacher: s.teacher,
+        room: s.room,
+        startTime: s.start,
+        endTime: s.end,
+        startPeriod: null,
+        endPeriod: null,
+        periods: null,
+        weekday: index + 1,
+      });
+    }
+
+    for (const day of days) {
+      day.sessions.sort((a, b) => a.startTime.localeCompare(b.startTime));
+    }
+
+    return {
+      from: days[0].date,
+      to: days[days.length - 1].date,
+      days,
+    };
+  }
+
+  function goToWeek(offset) {
+    const maxForward = FUTURE_LIMIT();
+
+    const clamped = Math.max(-PAST_LIMIT, Math.min(maxForward, offset));
+    if (clamped === state.weekOffset) return;
+
+    state.weekOffset = clamped;
+    loadWeek();
+  }
+
+  /* ================= Draw ================= */
 
   function draw() {
+    updateWeekLabel();
     drawGrid();
     drawAside();
-    drawSummary();
-    updateWeekLabel();
-    syncWeekButtons();
+
+    /**
+     * Re-run the reveal observer.
+     *
+     * Panels and cards are born with `data-reveal`, which starts them at zero
+     * opacity until `enhance()` sees them. Nodes added after the first render
+     * are never observed, so without this a redrawn panel stays invisible.
+     */
+    enhance(gridSlot);
+    enhance(asideSlot);
   }
 
-  /* ================= Week controls ================= */
-
-  const weekLabel = el('span.term-bar__label');
-
   function updateWeekLabel() {
-    weekLabel.textContent = `Tuần ${state.week} · ${term.name}`;
+    const from = parseIsoDay(state.week.from);
+    const to = parseIsoDay(state.week.to);
+
+    weekLabel.textContent = `${formatDate(from, 'short')} – ${formatDate(to, 'short')}`;
+
+    const offset = state.weekOffset;
+
+    sourceNote.textContent =
+      offset === 0 ? 'Tuần này'
+        : offset === 1 ? 'Tuần sau'
+          : offset === -1 ? 'Tuần trước'
+            : offset > 0 ? `Tuần ${offset + 1}`
+              : `${Math.abs(offset)} tuần trước`;
+
+    syncNavButtons();
+  }
+
+  /** Disable the arrows at the ends of the reachable range. */
+  function syncNavButtons() {
+    prevBtn.disabled = state.weekOffset <= -PAST_LIMIT;
+    nextBtn.disabled = state.weekOffset >= FUTURE_LIMIT();
   }
 
   const prevBtn = button({
@@ -190,11 +368,7 @@ export async function schedulePage(ctx) {
     iconName: 'chevronLeft',
     label: 'Tuần trước',
     ariaLabel: 'Tuần trước',
-    onclick: async () => {
-      if (state.week <= 1) return;
-      state.week -= 1;
-      await loadWeek();
-    },
+    onclick: () => goToWeek(state.weekOffset - 1),
   });
 
   const nextBtn = button({
@@ -204,609 +378,364 @@ export async function schedulePage(ctx) {
     iconName: 'chevronRight',
     label: 'Tuần sau',
     ariaLabel: 'Tuần sau',
-    onclick: async () => {
-      if (state.week >= term.totalWeeks) return;
-      state.week += 1;
-      await loadWeek();
-    },
+    onclick: () => goToWeek(state.weekOffset + 1),
   });
 
-  function syncWeekButtons() {
-    prevBtn.disabled = state.week <= 1;
-    nextBtn.disabled = state.week >= term.totalWeeks;
-  }
-
+  // `segmented` returns a controller, not a node — keep both halves.
   const viewSwitch = segmented({
-    items: [
-      { id: 'week', label: 'Cả tuần', iconName: 'calendar' },
-      { id: 'day', label: 'Theo ngày', iconName: 'clock' },
-    ],
     active: state.view,
-    onChange: async (id) => {
+    items: [
+      { id: 'week', label: 'Cả tuần' },
+      { id: 'day', label: 'Theo ngày' },
+    ],
+    onChange: (id) => {
       state.view = id;
       viewSwitch.update(id);
-      if (id === 'week') await loadWeek();
-      else await loadDay();
+      drawGrid();
     },
   });
 
-  const termBar = el('div.term-bar', {}, [
-    el('div.term-bar__week', {}, [
-      prevBtn,
-      weekLabel,
-      nextBtn,
-      button({
-        variant: 'soft',
-        size: 'sm',
-        label: 'Tuần hiện tại',
-        iconName: 'target',
-        onclick: async () => {
-          state.week = term.currentWeek;
-          await (state.view === 'week' ? loadWeek() : loadDay());
-        },
-      }),
-    ]),
-    el('div', { style: { flex: 1 } }),
-    viewSwitch.node,
-  ]);
-
-  /* ================= Grid ================= */
+  /* ---------- Week grid ---------- */
 
   function drawGrid() {
-    render(gridSlot, 
-      state.view === 'day' ? dayRail() : weekGrid(),
-      state.view === 'day' ? agendaList() : dayRail()
-    );
+    gridSlot.replaceChildren(state.view === 'week' ? buildWeekGrid() : buildDayAgenda());
   }
 
-  function weekGrid() {
-    const todayIso = schoolDay(new Date());
-    const todayDate = startOfDay(new Date());
+  function buildWeekGrid() {
+    const all = state.week.days.flatMap((d) => d.sessions);
+    const today = isoDay(new Date());
 
-    const days = term.dayNames.map((label, index) => {
-      const iso = index + 2;
-      return {
-        label,
-        short: WEEKDAY_SHORT[iso - 1] ?? '',
-        iso,
-        date: addDays(todayDate, index + 2 - schoolDay(todayDate)),
-      };
-    });
+    if (!all.length) {
+      /**
+       * Two very different empties. "You have no classes" is alarming and often
+       * wrong (a cancelled week, a wrong term); "the school has not published
+       * this far ahead" is routine and expected.
+       */
+      return panel({
+        title: 'Thời khóa biểu',
+        body: [
+          emptyState({
+            iconName: state.beyondTerm ? 'calendar' : 'sun',
+            title: state.beyondTerm ? 'Chưa có dữ liệu' : 'Không có tiết học',
+            message: state.beyondTerm
+              ? 'Trường chưa công bố thời khóa biểu cho tuần này. Hãy quay lại tuần hiện tại hoặc chọn tuần khác.'
+              : 'Hệ thống nhà trường chưa ghi nhận tiết học nào cho tuần này.',
+            action: state.beyondTerm
+              ? button({ label: 'Về tuần này', variant: 'secondary', size: 'sm', onclick: () => goToWeek(0) })
+              : null,
+          }),
+        ],
+      });
+    }
 
-    const rows = buildRowModel();
+    const rows = buildRowModel(all);
+    // Session positioning measures against this same model.
+    rowsCache = rows;
 
     const grid = el('div.timetable', {
       style: {
-        '--days': String(days.length),
-        // Row 1 is the sticky header; the rest mirrors the row model exactly so
-        // `grid-row: start / span n` lines up with the painted rows.
+        '--days': String(DAYS_SHOWN),
+
+        /**
+         * Row heights come from the model, not from content.
+         *
+         * `--hour-h` and `--break-h` are declared on `.timetable` but referenced
+         * nowhere in the stylesheet, so without this every row collapses to its
+         * text height — a 3-hour lab ends up the same size as a 1-hour lecture.
+         */
         gridTemplateRows: [
           'auto',
           ...rows.map((row) => (row.kind === 'break' ? 'var(--break-h)' : 'var(--hour-h)')),
         ].join(' '),
       },
-      role: 'grid',
-      'aria-label': 'Thời khóa biểu trong tuần',
     });
+    const lastColumn = DAYS_SHOWN + 1;
 
-    /* --- Header row --- */
-    grid.appendChild(el('div.tt__corner'));
-    days.forEach((day) => {
-      grid.appendChild(
-        el(
-          'div.tt__day',
-          { class: day.iso === todayIso ? 'tt__day--today' : '' },
-          [
-            el('span.tt__day-name', {}, day.short),
-            el('span.tt__day-num', {}, String(day.date.getDate())),
-          ]
-        )
-      );
-    });
-
-    /* --- Empty cells first, so sessions always paint on top --- */
-    rows.forEach((row, index) => {
-      const gridRow = String(index + 2); // row 1 is the header
-
-      if (row.kind === 'break') {
-        grid.appendChild(el('div.tt__slot.tt__slot--label.tt__slot--break', { style: { gridRow } }));
-        days.forEach((day, columnIndex) => {
-          // Only the middle column carries the label, so the strip reads as one
-          // continuous band rather than six repeated captions.
-          const showLabel = row.label && columnIndex === Math.floor(days.length / 2) - 1;
-          grid.appendChild(
-            el('div.tt__slot.tt__slot--break', {
-              style: { gridRow, gridColumn: String(columnIndex + 2) },
-            }, showLabel ? el('span.tt__break-label', {}, row.label) : null)
-          );
-        });
-        return;
-      }
-
-      grid.appendChild(
-        el('div.tt__slot.tt__slot--label', { style: { gridRow } },
-          `${String(row.hour).padStart(2, '0')}:00`)
-      );
-
-      days.forEach((day, columnIndex) => {
-        grid.appendChild(
-          el('div.tt__slot', { style: { gridRow, gridColumn: String(columnIndex + 2) } })
-        );
-      });
-    });
-
-    /* --- Sessions --- */
-    days.forEach((day, columnIndex) => {
-      state.sessions
-        .filter((session) => session.day === day.iso)
-        .forEach((session) => {
-          const startMinutes = toMinutes(session.start);
-          const endMinutes = toMinutes(session.end);
-          const startRow = rows.findIndex(
-            (row) => row.kind === 'hour' && row.minutes === startMinutes
-          );
-          if (startRow < 0) return;
-
-          const card = sessionCard(session);
-          card.style.gridRow = `${startRow + 2} / span ${spanOf(rows, startMinutes, endMinutes)}`;
-          card.style.gridColumn = String(columnIndex + 2);
-          grid.appendChild(card);
-        });
-    });
-
-    return el('div', { 'data-reveal': '' }, grid);
-  }
-
-  function sessionCard(session) {
-    const now = new Date();
-    const nowMinutes = now.getHours() * 60 + now.getMinutes();
-    const isToday = session.day === schoolDay(now);
-    const start = toMinutes(session.start);
-    const end = toMinutes(session.end);
-
-    const isPast = isToday && end < nowMinutes;
-    const isNow = isToday && start <= nowMinutes && end >= nowMinutes;
-
-    const compact = session.durationMinutes <= 60;
-
-    return el(
-      'button.session',
-      {
-        class: [
-          `course-c${session.colorIndex}`,
-          isPast ? 'session--past' : '',
-          isNow ? 'session--now' : '',
-          compact ? 'session--compact' : '',
-        ]
-          .filter(Boolean)
-          .join(' '),
-        type: 'button',
-        'aria-label':
-          `${session.courseName}, ${session.start} đến ${session.end}, phòng ${session.room}`,
-        onclick: () => openSessionSheet(session),
-      },
-      [
-        el('span.session__type', {}, session.type),
-        el('span.session__name', {}, session.courseName),
-        el('span.session__meta', {}, [icon('mapPin'), el('span', {}, session.room)]),
-        compact
-          ? null
-          : el('span.session__meta', {}, [
-              icon('clock'),
-              el('span', {}, `${session.start}–${session.end}`),
-            ]),
-      ]
+    // Every cell is placed explicitly.
+    //
+    // Grid auto-placement would otherwise run *after* the sessions have been
+    // positioned: the spec places definite items first, then fills the gaps, so
+    // the time gutter would slide sideways wherever a session occupied a cell.
+    grid.append(
+      el('div.tt__corner', { style: { gridColumn: '1', gridRow: '1' } })
     );
-  }
 
-  /* --- Day rail (mobile picker / desktop quick nav) --- */
+    for (const day of state.week.days.slice(0, DAYS_SHOWN)) {
+      const date = parseIsoDay(day.date);
+      const selected = day.date === state.selectedDate;
 
-  function dayRail() {
-    const todayDate = startOfDay(new Date());
-    const selectedIso = state.view === 'day' ? state.day : schoolDay(new Date());
-
-    const rail = el('div.day-rail');
-
-    term.dayNames.forEach((label, index) => {
-      const iso = index + 2;
-      const date = addDays(todayDate, index + 2 - schoolDay(todayDate));
-      const dots = state.sessions.filter((session) => session.day === iso);
-
-      rail.appendChild(
-        el(
-          'button.day-pill',
-          {
-            type: 'button',
-            class: selectedIso === iso ? 'is-active' : '',
-            'aria-pressed': String(selectedIso === iso),
-            onclick: async () => {
-              state.day = iso;
-              state.view = 'day';
-              viewSwitch.update('day');
-              await loadDay();
-            },
+      grid.append(
+        el('button.tt__day', {
+          type: 'button',
+          class: [day.date === today ? 'tt__day--today' : '', selected ? 'tt__day--selected' : '']
+            .filter(Boolean)
+            .join(' '),
+          style: { gridColumn: String(day.weekday + 1), gridRow: '1' },
+          'aria-pressed': String(selected),
+          title: `Xem lịch ${WEEKDAY_SHORT[date.getDay()]} ${date.getDate()}`,
+          onclick: () => {
+            state.selectedDate = day.date;
+            draw();
           },
-          [
-            el('span.day-pill__name', {}, label),
-            el('span.day-pill__num', {}, String(date.getDate())),
-            el(
-              'span.day-pill__dots',
-              {},
-              dots.slice(0, 4).map((session) =>
-                el('span.day-pill__dot', {
-                  style: {
-                    '--dot-color': `var(--${COLOR_NAMES[(session.colorIndex - 1) % COLOR_NAMES.length]}-400)`,
-                  },
-                })
-              )
-            ),
-          ]
-        )
+        }, [
+          el('span.tt__day-name', {}, WEEKDAY_SHORT[date.getDay()]),
+          el('span.tt__day-num', {}, String(date.getDate())),
+          el('span.tt__day-count', {}, day.sessions.length ? `${day.sessions.length} tiết` : '—'),
+        ])
       );
-    });
-
-    return rail;
-  }
-
-  /* --- Day agenda --- */
-
-  function agendaList() {
-    if (!state.sessions.length) {
-      return el('div.mt-4', {}, emptyState({
-        iconName: 'sparkle',
-        title: 'Không có tiết học trong ngày',
-        message: 'Chọn một ngày khác hoặc chuyển sang chế độ xem cả tuần.',
-        action: button({
-          label: 'Xem cả tuần',
-          variant: 'soft',
-          size: 'sm',
-          iconName: 'calendar',
-          onclick: async () => {
-            state.view = 'week';
-            viewSwitch.update('week');
-            await loadWeek();
-          },
-        }),
-      }));
     }
 
-    const now = new Date();
-    const nowMinutes = now.getHours() * 60 + now.getMinutes();
-    const isToday = state.day === schoolDay(now);
+    // Body rows: a label gutter cell followed by one empty cell per day.
+    rows.forEach((row, index) => {
+      const y = index + 2; // row 1 is the header
 
-    return el(
-      'div.agenda.mt-4',
-      {},
-      state.sessions.map((session, index) => {
-        const start = toMinutes(session.start);
-        const end = toMinutes(session.end);
-        const isPast = isToday && end < nowMinutes;
-        const isNow = isToday && start <= nowMinutes && end >= nowMinutes;
+      const label =
+        row.kind === 'break'
+          ? el('div.tt__slot.tt__slot--break', { style: { gridColumn: '1', gridRow: String(y) } }, [
+              el('span.tt__break-label', {}, row.label),
+            ])
+          : el('div.tt__slot.tt__slot--label', { style: { gridColumn: '1', gridRow: String(y) } }, [
+              el('span', {}, `${String(row.hour).padStart(2, '0')}:00`),
+            ]);
 
-        return el(
-          'div',
-          {
-            class: [
-              'agenda-item',
-              `course-c${session.colorIndex}`,
-              isPast ? 'agenda-item--past' : '',
-              isNow ? 'agenda-item--now' : '',
-            ]
-              .filter(Boolean)
-              .join(' '),
-            'data-reveal': 'left',
-            style: { '--reveal-delay': `${index * 60}ms` },
-            role: 'button',
-            tabindex: '0',
-            onclick: () => openSessionSheet(session),
-            onkeydown: (event) => {
-              if (event.key === 'Enter') openSessionSheet(session);
-            },
-          },
-          [
-            el('div.agenda-item__time', {}, [
-              el('span.agenda-item__start', {}, session.start),
-              el('span.agenda-item__end', {}, session.end),
-              el('span.agenda-item__dur', {}, `${session.durationMinutes}′`),
-            ]),
-            el('div.agenda-item__body', {}, [
-              el('span.agenda-item__name', {}, session.courseName),
-              el('span.agenda-item__teacher', {}, session.teacher),
-              el('div.agenda-item__tags', {}, [
-                badge({ label: session.type, variant: 'primary' }),
-                badge({ label: session.room, variant: 'neutral', iconName: 'mapPin' }),
-                isNow ? badge({ label: 'Đang học', variant: 'success', dot: true }) : null,
-              ]),
-            ]),
-          ]
+      grid.append(label);
+
+      for (let c = 2; c <= lastColumn; c += 1) {
+        grid.append(
+          el('div.tt__slot', { style: { gridColumn: String(c), gridRow: String(y) } })
         );
-      })
-    );
-  }
-
-  /* ================= Aside ================= */
-
-  async function drawAside() {
-    const [courseList, examList] = await Promise.all([
-      scheduleApi.courses(),
-      scheduleApi.exams(),
-    ]);
-
-    render(asideSlot, 
-      panel({
-        title: 'Kỳ thi sắp tới',
-        titleIcon: 'target',
-        body: el('div.stack-2', {}, examList.map((exam, index) => {
-          const urgent = exam.daysLeft <= 7;
-
-          return el(
-            'div.exam-countdown',
-            {
-              class: `course-c${exam.colorIndex}`,
-              'data-reveal': 'left',
-              style: { '--reveal-delay': `${index * 70}ms` },
-            },
-            [
-              el('div.exam-countdown__days', {}, [
-                el('span.exam-countdown__num', {}, String(exam.daysLeft)),
-                el('span.exam-countdown__unit', {}, 'ngày'),
-              ]),
-              el('div.stack-1', { style: { minWidth: 0, flex: 1 } }, [
-                el('span.truncate', {
-                  style: { fontWeight: 700, fontSize: 'var(--text-sm)' },
-                }, exam.courseName),
-                el('span.caption.truncate', {}, `${exam.type} · ${exam.room}`),
-              ]),
-              urgent ? badge({ label: 'Sắp', variant: 'danger', pulse: true }) : null,
-            ]
-          );
-        })),
-      }),
-
-      panel({
-        title: 'Khối lượng học tập',
-        titleIcon: 'chart',
-        body: barChart({
-          data: term.dayNames.map((label, index) => {
-            const iso = index + 2;
-            const minutes = state.sessions
-              .filter((session) => session.day === iso)
-              .reduce((sum, session) => sum + session.durationMinutes, 0);
-
-            return {
-              label: WEEKDAY_SHORT[iso - 1] ?? label,
-              value: Math.round((minutes / 60) * 10) / 10,
-              color: `var(--${COLOR_NAMES[index % COLOR_NAMES.length]}-400)`,
-              color2: `var(--${COLOR_NAMES[(index + 1) % COLOR_NAMES.length]}-400)`,
-            };
-          }),
-        }),
-      }),
-
-      panel({
-        title: 'Môn đang học',
-        titleIcon: 'book',
-        body: el('div.stack-2', {}, courseList.map((course, index) =>
-          el(
-            'div.course',
-            {
-              class: `course-c${course.colorIndex}`,
-              'data-reveal': 'zoom',
-              style: { '--reveal-delay': `${index * 50}ms` },
-              role: 'button',
-              tabindex: '0',
-              onclick: () => openCourseSheet(course),
-              onkeydown: (event) => {
-                if (event.key === 'Enter') openCourseSheet(course);
-              },
-            },
-            [
-              el('div.course__head', {}, [
-                el('div.stack-1', { style: { minWidth: 0 } }, [
-                  el('span.course__code', {}, course.code),
-                  el('span.course__name', {}, course.name),
-                ]),
-                badge({ label: `${course.credits} TC`, variant: 'neutral' }),
-              ]),
-              el('div.course__stats', {}, [
-                el('div.course__stat', {}, [
-                  el('span.course__stat-value', {}, `${course.attendance}%`),
-                  el('span.course__stat-label', {}, 'Chuyên cần'),
-                ]),
-                el('div.course__stat', {}, [
-                  el('span.course__stat-value', {}, `${course.attended}/${course.sessions}`),
-                  el('span.course__stat-label', {}, 'Buổi'),
-                ]),
-                el('div.course__stat', {}, [
-                  el('span.course__stat-value', {}, course.room),
-                  el('span.course__stat-label', {}, 'Phòng'),
-                ]),
-              ]),
-            ]
-          )
-        )),
-      })
-    );
-  }
-
-  /* ================= Summary ================= */
-
-  function drawSummary() {
-    const totalHours = state.sessions.reduce((sum, s) => sum + s.durationMinutes, 0) / 60;
-    const uniqueCourses = new Set(state.sessions.map((s) => s.courseId)).size;
-    const theory = state.sessions.filter((s) => s.type === 'LT').length;
-    const practice = state.sessions.filter((s) => s.type === 'TH').length;
-
-    render(summarySlot, 
-      stat({
-        label: 'Tổng giờ học',
-        value: `${totalHours.toFixed(1)}h`,
-        iconName: 'clock',
-        meta: `Tuần ${state.week}`,
-        tint: 'var(--primary-soft)',
-      }),
-      stat({
-        label: 'Môn trong tuần',
-        value: uniqueCourses,
-        iconName: 'book',
-        meta: `${theory} buổi lý thuyết · ${practice} buổi thực hành`,
-        tint: 'var(--accent-soft)',
-      }),
-      stat({
-        label: 'Tỉ lệ thực hành',
-        value: `${percent(practice, state.sessions.length)}%`,
-        iconName: 'settings',
-        meta: `${practice} / ${state.sessions.length} buổi`,
-        tint: 'var(--violet-soft)',
-      }),
-      stat({
-        label: 'Ngày có học',
-        value: new Set(state.sessions.map((s) => s.day)).size,
-        iconName: 'calendar',
-        meta: term.name,
-        tint: 'var(--success-soft)',
-      })
-    );
-  }
-
-  /* ================= Detail sheets ================= */
-
-  async function openSessionSheet(session) {
-    const { modal } = await import('../components/overlay.js');
-
-    modal({
-      title: session.courseName,
-      description: `${session.courseCode} · Buổi ${session.type}`,
-      size: 'sm',
-      body: [
-        el('div.info-grid', {}, [
-          infoRow('Thời gian', `${session.start} – ${session.end}`, 'clock'),
-          infoRow('Thời lượng', `${session.durationMinutes} phút`, 'timer'),
-          infoRow('Phòng học', session.room, 'mapPin'),
-          infoRow('Giảng viên', session.teacher, 'user'),
-          infoRow('Tuần học', `${session.weekFrom} – ${session.weekTo}`, 'calendar'),
-          infoRow('Loại buổi', session.type, 'book'),
-        ]),
-      ],
-      footer: [
-        button({
-          label: 'Thêm vào lịch cá nhân',
-          variant: 'secondary',
-          iconName: 'calendar',
-          onclick: () =>
-            toast({ title: 'Đã thêm vào lịch', message: session.courseName, variant: 'success' }),
-        }),
-      ],
+      }
     });
+
+    // Sessions sit on the same grid, placed explicitly so a three-hour lab is
+    // three rows tall.
+    for (const day of state.week.days.slice(0, DAYS_SHOWN)) {
+      for (const session of day.sessions) {
+        grid.append(positionSession(session, day));
+      }
+    }
+
+    return grid;
   }
 
-  async function openCourseSheet(course) {
-    const { modal } = await import('../components/overlay.js');
+  /** Place one session on the grid. */
+  function positionSession(session, day) {
+    const startMinutes = minutesOf(session.startTime);
+    const endMinutes = minutesOf(session.endTime) || startMinutes + 45;
 
-    modal({
-      title: course.name,
-      description: `${course.code} · ${course.credits} tín chỉ`,
-      size: 'sm',
-      body: [
-        el('div.row-4', { style: { justifyContent: 'center' } }, [
-          progressRing({
-            percent: course.attendance,
-            caption: 'Chuyên cần',
-            color: 'var(--success)',
-          }),
-          el('div.stack-2', {}, [
-            el('div.stack-1', {}, [
-              el('span.overline', {}, 'Giảng viên'),
-              el('strong', {}, course.teacher),
-            ]),
-            el('div.stack-1', {}, [
-              el('span.overline', {}, 'Phòng học chính'),
-              el('strong', { style: { fontFamily: 'var(--font-mono)' } }, course.room),
-            ]),
-          ]),
-        ]),
-        el('div.divider'),
-        el('div.stack-3', {}, [
-          el('span.overline', {}, 'Buổi đã tham dự'),
-          labelledBar({
-            label: `${course.attended}/${course.sessions} buổi`,
-            percent: course.attendance,
-          }),
-        ]),
-      ],
-      footer: [
-        button({
-          label: 'Xem tài liệu môn này',
-          variant: 'secondary',
-          iconName: 'folder',
-          onclick: () => {
-            window.location.hash = `/documents?course=${course.id}`;
-          },
-        }),
-      ],
-    });
-  }
+    // Row 1 is the header, so the model starts at row 2.
+    const startIndex = rowIndexFor(rowsCache, startMinutes);
+    const endIndex = Math.max(startIndex + 1, rowIndexFor(rowsCache, endMinutes));
+    const startRow = startIndex + 1;
+    const endRow = endIndex + 1;
 
-  function infoRow(label, value, iconName) {
-    return el('div.info-item', {}, [
-      el('div.info-item__label', {}, [
-        el('span', { style: { display: 'inline-flex' } }, icon(iconName)),
-        el('span', {}, label),
+    /**
+     * Hour rows are only a backdrop. A period-4 class starts at 09:35, so the
+     * card is nudged down inside its first row and shortened to its real
+     * length instead of pretending to fill 09:00–12:00.
+     */
+    const row = rowsCache[startIndex - 1];
+    const rowStart = row?.kind === 'hour' ? row.hour * 60 : startMinutes;
+    const offsetMinutes = Math.max(0, startMinutes - rowStart);
+    const durationMinutes = Math.max(15, endMinutes - startMinutes);
+
+    // Column 1 is the time gutter, so day 1 starts at column 2.
+    const column = day.weekday + 1;
+
+    const node = el('article.session', {
+      class: `course-c${colourFor(session.subject)}`,
+      style: {
+        gridColumn: String(column),
+        gridRow: `${startRow} / ${endRow}`,
+        alignSelf: 'start',
+        marginTop: `calc(var(--hour-h) * ${(offsetMinutes / 60).toFixed(4)})`,
+        height: `calc(var(--hour-h) * ${(durationMinutes / 60).toFixed(4)})`,
+      },
+      title: [
+        session.subject,
+        session.room,
+        session.teacher,
+        `${session.startTime}–${session.endTime}`,
+      ]
+        .filter(Boolean)
+        .join(' · '),
+    }, [
+      el('span.session__name', {}, session.subject),
+      // The grid rows are hourly, so a period-4 class starting at 09:35 would
+      // otherwise look identical to one starting at 09:00. The exact window is
+      // printed here rather than only in a tooltip.
+      el('span.session__meta', {}, [
+        icon('clock'),
+        el('span', {}, `${session.startTime}–${session.endTime}`),
       ]),
-      el('span.info-item__value', {}, value),
+      el('span.session__meta', {}, [
+        icon('mapPin'),
+        el('span', {}, session.room ?? '—'),
+      ]),
     ]);
+
+    if (session.exam) {
+      node.append(badge({ label: session.exam, variant: 'danger' }));
+    }
+
+    return node;
+  }
+
+  /**
+   * Row number (1-based, within the body model) for a wall-clock time.
+   *
+   * Clamped to the visible grid so a class starting at 06:00 or finishing after
+   * 17:00 still lands somewhere sensible instead of collapsing the grid.
+   */
+  function rowIndexFor(rows, minutes) {
+    const hour = Math.floor(minutes / 60);
+
+    let index = 0;
+    let fallback = 1;
+
+    for (const row of rows) {
+      index += 1;
+      if (row.kind === 'hour') {
+        fallback = index;
+        if (row.hour === hour) return index;
+      }
+    }
+
+    // Before the first hour or after the last: clamp to the nearest edge so the
+    // class still lands inside the grid.
+    return hour < (rows[0]?.hour ?? hour) ? 1 : fallback;
+  }
+
+  /* ---------- Day agenda (mobile) ---------- */
+
+  function buildDayAgenda() {
+    const today = isoDay(new Date());
+    const day = state.week.days.find((d) => d.date === state.selectedDate);
+    const rail = el('div.day-rail');
+
+    for (const d of state.week.days) {
+      const date = parseIsoDay(d.date);
+      rail.append(
+        el('button.day-pill', {
+          type: 'button',
+          class: d.date === state.selectedDate ? 'is-active' : '',
+          onclick: () => {
+            state.selectedDate = d.date;
+            drawGrid();
+          },
+        }, [
+          el('span.day-pill__name', {}, WEEKDAY_SHORT[date.getDay()]),
+          el('span.day-pill__num', {}, String(date.getDate())),
+          el('span.day-pill__dots', {}, d.sessions.map(() => el('span.day-pill__dot'))),
+        ])
+      );
+    }
+
+    const list = el('div.day-list');
+
+    if (!day || !day.sessions.length) {
+      list.append(
+        emptyState({
+          iconName: 'sun',
+          title: day?.date === today ? 'Hôm nay không có tiết học' : 'Không có tiết học',
+          message: state.beyondTerm
+            ? 'Trường chưa công bố lịch cho tuần này.'
+            : 'Tận dụng ngày nghỉ để ôn tập nhé.',
+        })
+      );
+    } else {
+      for (const session of day.sessions) {
+        list.append(agendaRow(session, day));
+      }
+    }
+
+    return el('div', {}, [rail, list]);
+  }
+
+  function agendaRow(session, day) {
+    const now = new Date();
+    const isToday = day.date === isoDay(now);
+    const started = isToday && minutesOf(session.startTime) <= now.getHours() * 60 + now.getMinutes();
+    const ended = isToday && minutesOf(session.endTime) < now.getHours() * 60 + now.getMinutes();
+
+    const classes = ['agenda-item', `course-c${colourFor(session.subject)}`];
+    if (ended) classes.push('session--past');
+    else if (started) classes.push('session--now');
+
+    return el('article.agenda-item', { class: classes.join(' ') }, [
+      el('div.agenda-item__time', {}, [
+        el('strong', {}, session.startTime),
+        el('span', {}, session.endTime),
+      ]),
+      el('div.agenda-item__body', {}, [
+        el('span.session__name', {}, session.subject),
+        el('span.session__meta', {}, [
+          icon('mapPin'),
+          el('span', {}, session.room ?? '—'),
+        ]),
+        session.teacher ? el('span.session__meta', {}, [icon('user'), el('span', {}, session.teacher)]) : null,
+      ]),
+    ]);
+  }
+
+  /* ---------- Aside: the selected day's detail ---------- */
+
+  function drawAside() {
+    const day = state.week.days.find((d) => d.date === state.selectedDate);
+    const body = [];
+
+    if (day && day.sessions.length) {
+      for (const session of day.sessions) {
+        body.push(
+          el('div.schedule-detail', {}, [
+            el('div.schedule-detail__time', {}, `${session.startTime}–${session.endTime}`),
+            el('div.schedule-detail__body', {}, [
+              el('strong', {}, session.subject),
+              session.room ? el('span', {}, session.room) : null,
+              session.teacher ? el('span', {}, session.teacher) : null,
+            ]),
+          ])
+        );
+      }
+    } else {
+      body.push(
+        emptyState({
+          iconName: 'sun',
+          title: 'Không có tiết học',
+          message: 'Bấm vào một cột ngày ở lưới bên trái để xem chi tiết ngày đó.',
+        })
+      );
+    }
+
+    asideSlot.replaceChildren(panel({ title: 'Lịch trong ngày', body }));
   }
 
   /* ================= Assemble ================= */
 
   const view = el('div.page', {}, [
     pageHeader({
-      eyebrow: 'Học tập',
-      eyebrowIcon: 'calendar',
       title: 'Thời khóa biểu',
-      subtitle: 'Lịch học theo tuần, điểm danh và các kỳ thi sắp tới.',
-      meta: [
-        badge({ label: term.name, variant: 'primary', iconName: 'book' }),
-        badge({ label: `Tuần ${term.currentWeek}/${term.totalWeeks}`, variant: 'neutral', iconName: 'calendar' }),
-      ],
+      subtitle: subtitleSlot,
       actions: [
-        button({
-          label: 'Xuất lịch (ICS)',
-          variant: 'secondary',
-          iconName: 'download',
-          onclick: () =>
-            toast({
-              title: 'Đã xuất lịch (mô phỏng)',
-              message: 'File .ics sẽ được tải xuống khi có backend.',
-              variant: 'success',
-            }),
-        }),
+        el('div.term-bar', {}, [
+          prevBtn,
+          weekLabel,
+          nextBtn,
+          todayBtn,
+          viewSwitch.node,
+        ]),
       ],
     }),
-    termBar,
-    summarySlot,
-    el('div.split.split--wide-aside', {}, [gridSlot, asideSlot]),
+    el('div.schedule-layout', {}, [
+      el('div.schedule-main', {}, [
+        sourceNote,
+        gridSlot,
+      ]),
+      asideSlot,
+    ]),
   ]);
 
-  render(outlet, view);
+  outlet.replaceChildren(view);
 
-  await (state.view === 'week' ? loadWeek() : loadDay());
-  await drawAside();
-
-  // Switching between a phone and a desktop layout should pick the right view
-  let compact = isCompact();
-  window.addEventListener(
-    'resize',
-    () => {
-      const next = isCompact();
-      if (next === compact) return;
-      compact = next;
-      state.view = next ? 'day' : 'week';
-      viewSwitch.update(state.view);
-      (next ? loadDay() : loadWeek());
-    },
-    { passive: true }
-  );
-
-  import('../utils/motion.js').then(({ enhance }) => enhance(view));
+  await loadWeek();
 }

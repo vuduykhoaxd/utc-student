@@ -1,6 +1,0 @@
-User-agent: *
-Allow: /
-
-# The whole app is a client-side SPA: every route lives in index.html behind a
-# hash, so there is nothing here for a crawler to miss that it cannot already
-# reach. The only genuinely non-HTML asset a crawler might want is the OG image.

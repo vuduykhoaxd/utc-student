@@ -8,6 +8,25 @@
   grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
   min-height: 100dvh;
   transition: grid-template-columns var(--layout-dur) var(--layout-ease);
+
+  /*
+   * Lift the app above the aurora backdrop.
+   *
+   * The backdrop is `position: fixed; z-index: 0`, and a static element with an
+   * auto z-index paints in an earlier step than a positioned one — so without
+   * this the whole interface sits *under* the background gradient and only the
+   * backdrop is visible. `position: relative` + a z-index above 0 is what puts
+   * the app on top.
+   */
+  position: relative;
+  z-index: 1;
+
+  /*
+   * Animating grid-template-columns forces a full grid reflow every frame.
+   * Containing the sidebar's layout keeps the work inside that box instead of
+   * spilling into the rest of the page.
+   */
+  contain: layout;
 }
 
 .app.is-collapsed {
@@ -35,6 +54,51 @@
   width: 100%;
   max-width: var(--content-max);
   margin-inline: auto;
+}
+
+/*
+ * Full-height routes (chat).
+ *
+ * Those pages size themselves against the viewport, so the content wrapper
+ * must stop scrolling and hand the remaining height down: otherwise the page
+ * header plus the wrapper's padding push the panel past the fold and the
+ * document grows a second, pointless scrollbar.
+ */
+.app__content.is-fill {
+  display: flex;
+  flex-direction: column;
+  /* `.app__content` is `flex: 1` (basis 0) in the main column; without this
+     the declared height is ignored and the page grows past the viewport. */
+  flex: 0 0 auto;
+  min-height: 0;
+  height: calc(100dvh - var(--topbar-h));
+  overflow: hidden;
+  padding-bottom: var(--space-4);
+}
+
+.app__content.is-fill .app__inner {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.app__content.is-fill #view {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.app__content.is-fill .page {
+  flex: 1;
+  min-height: 0;
+}
+
+.app__content.is-fill .chat {
+  flex: 1;
+  height: auto;
+  min-height: 0;
 }
 
 /* Route transition wrapper — JS swaps children, CSS animates */

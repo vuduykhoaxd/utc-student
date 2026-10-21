@@ -393,6 +393,10 @@
   transition: transform var(--dur-base) var(--ease-out);
 }
 
+.sidebar__collapse svg {
+  transition: transform var(--dur-base) var(--ease-spring);
+}
+
 .app.is-collapsed .sidebar__collapse svg {
   transform: rotate(180deg);
 }
@@ -409,6 +413,21 @@
   overflow: hidden;
   pointer-events: none;
   transition: opacity var(--dur-fast) var(--ease-out);
+
+  /*
+   * `.nav-item__label` is `flex: 1`, i.e. grow from a zero basis — which fills
+   * all free space instead of collapsing to zero. Neutralise it, or the label
+   * silently takes the rail's width and pushes the icon off-centre.
+   */
+  flex: 0 0 0;
+  min-width: 0;
+  padding: 0;
+
+  /*
+   * `margin-left: auto` survives the width change and eats all the free space,
+   * shoving the avatar against the left edge. Zero it so the avatar centres.
+   */
+  margin-left: 0;
 }
 
 .app.is-collapsed .sidebar__brand,
@@ -416,6 +435,38 @@
 .app.is-collapsed .user-card {
   justify-content: center;
   padding-inline: 0;
+}
+
+/*
+ * Drop the gaps too.
+ *
+ * The flex `gap` survives the collapse, so with a zero-width label the icon is
+ * offset by half the gap and sits visibly off-centre — the "lệch" when the rail
+ * is folded. Centring a 2.4rem logo in a 76px rail only works once the spacing
+ * around it is actually gone.
+ */
+.app.is-collapsed .sidebar__brand,
+.app.is-collapsed .user-card {
+  gap: 0;
+}
+
+/*
+ * One icon size when folded.
+ *
+ * The logo is 2.4rem, the nav icons 1.5rem and the avatar 2rem. Each is
+ * individually centred, but a 38px logo over 24px icons reads as the icons being
+ * pushed inward. Unifying them at 1.5rem — the rail icon size — is what makes a
+ * collapsed rail look deliberate rather than lopsided.
+ */
+.app.is-collapsed .sidebar__logo,
+.app.is-collapsed .user-card .avatar {
+  width: 1.5rem;
+  height: 1.5rem;
+}
+
+.app.is-collapsed .sidebar__logo {
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-sm);
 }
 
 .app.is-collapsed .nav-item {
@@ -474,6 +525,15 @@
 }
 
 @media (max-width: 1024px) {
+  /* `.app` sets `contain: layout` to keep the desktop rail animation cheap,
+     but that also makes it the containing block for fixed layers — a fixed
+     scrim would then be pinned to the document top instead of the viewport. */
+  .app {
+    contain: none;
+  }
+}
+
+@media (max-width: 1024px) {
   .sidebar {
     position: fixed;
     top: 0;
@@ -525,4 +585,8 @@
   .app.is-collapsed .nav-item::after {
     display: none;
   }
+}
+/* Keep the footer user card centred while the rail is folded. */
+.app.is-collapsed .sidebar__footer {
+  padding-inline: 0;
 }

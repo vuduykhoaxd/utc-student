@@ -3,6 +3,8 @@
  * Tiny hyperscript-style helpers used to build the UI without a framework.
  */
 
+import { revealRendered } from './motion.js';
+
 /**
  * Create an element.
  * @param {string} tag - Tag name, optionally with `.class` and `#id` shorthand.
@@ -120,8 +122,18 @@ export const $$ = (selector, scope = document) => Array.from(scope.querySelector
  * @param {...(Node|string|Array|null|false)} children
  */
 export function render(node, ...children) {
+  /**
+   * An in-place update (filtered list, redrawn panel) replaces nodes that were
+   * already revealed. The new nodes carry `data-reveal`, so without releasing
+   * them here they stay invisible: the scroll observer only ever saw the old
+   * ones. Route mounts (`#view`) are excluded so page transitions still animate.
+   */
+  const updating = node.isConnected && node.id !== 'view' && node.childElementCount > 0;
+
   node.replaceChildren();
   appendChildren(node, children);
+
+  if (updating) revealRendered(node);
   return node;
 }
 
