@@ -31,7 +31,7 @@
  * static host such as GitHub Pages, so it is the default.
  *
  * Point BASE_URL at the deployed backend before going live. For local work the
- * backend runs on http://127.0.0.1:3000.
+ * backend runs on https://utc-student.falix.org/
  */
 export const MODE = 'proxy';
 
@@ -44,7 +44,7 @@ export const MODE = 'proxy';
 export const BASE_URL =
   MODE === 'direct'
     ? 'https://qldt.utc.edu.vn'
-    : (window.UTC_API_BASE_URL || 'http://127.0.0.1:3000');
+    : (window.UTC_API_BASE_URL || 'https://utc-student.falix.org');
 
 /** Portal paths, in one place so they are easy to audit. */
 export const PATHS = {
