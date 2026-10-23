@@ -1,6 +1,6 @@
 # UTC Student
 
-Cổng thông tin dành riêng cho sinh viên **Trường Đại học Giao thông vận tải và Truyền thông (UTC)** —
+Cổng thông tin dành riêng cho sinh viên **Trường Đại học Giao thông vận tải (UTC)** —
 bản thay thế cho `qldt.utc.edu.vn`.
 
 Xây dựng **hoàn toàn bằng HTML, CSS và JavaScript thuần**: không framework, không bundler,
