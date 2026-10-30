@@ -1,4 +1,4 @@
-# UTC Student / SaaS 
+# UTC Student / SaaS - Closed
 
 Cổng thông tin dành riêng cho sinh viên **Trường Đại học Giao thông vận tải (UTC)** —
 bản thay thế cho `qldt.utc.edu.vn`.
